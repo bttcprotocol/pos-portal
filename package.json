@@ -1,5 +1,5 @@
 {
-  "name": "bttcprotocol/pos-portal",
+  "name": "bttc-pos-portal",
   "version": "1.5.2",
   "description": "Contracts to facilitate transfer of assets between TRON Main Network / Ethereum Main Network / BSC Main Network and Bttc Network, using security of Bttc POS layer",
   "main": "index.js",
