@@ -113,7 +113,7 @@ contract ChildERC721 is
      *
      * @param tokenId tokenId to withdraw
      */
-    function withdrawWithMetadataTo(address to, uint256 tokenId) external {
+    function withdrawWithMetadataTo(address to, uint256 tokenId) public {
 
         require(_msgSender() == ownerOf(tokenId), "ChildERC721: INVALID_TOKEN_OWNER");
 
