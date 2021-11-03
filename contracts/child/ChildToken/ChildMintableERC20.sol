@@ -62,8 +62,13 @@ contract ChildMintableERC20 is
      * @dev Should burn user's tokens. This transaction will be verified when exiting on root chain
      * @param amount amount of tokens to withdraw
      */
-    function withdraw(uint256 amount) external {
+    function withdrawTo(address to, uint256 amount) public {
         _burn(_msgSender(), amount);
+        emit WithdrawTo(to, address(0x00), amount);
+    }
+
+    function withdraw(uint256 amount) external {
+        withdrawTo(_msgSender(), amount);
     }
 
     /**
