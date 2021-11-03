@@ -19,6 +19,8 @@ contract ERC721Predicate is ITokenPredicate, AccessControlMixin, Initializable, 
     bytes32 public constant WITHDRAW_BATCH_EVENT_SIG = 0xf871896b17e9cb7a64941c62c188a4f5c621b86800e3d15452ece01ce56073df;
     // keccak256("TransferWithMetadata(address,address,uint256,bytes)")
     bytes32 public constant TRANSFER_WITH_METADATA_EVENT_SIG = 0xf94915c6d1fd521cee85359239227480c7e8776d7caf1fc3bacad5c269b66a14;
+    // keccak256("WithdrawTo(address,address,uint256)")
+    bytes32 public constant WITHDRAW_EVENT_SIG = 0x67b714876402c93362735688659e2283b4a37fb21bab24bc759ca759ae851fd8;
 
     // limit batching of tokens due to gas limit restrictions
     uint256 public constant BATCH_LIMIT = 20;
@@ -115,16 +117,15 @@ contract ERC721Predicate is ITokenPredicate, AccessControlMixin, Initializable, 
         RLPReader.RLPItem[] memory logTopicRLPList = logRLPList[1].toList(); // topics
         address withdrawer = address(logTopicRLPList[1].toUint()); // topic1 is from address
 
-        if (bytes32(logTopicRLPList[0].toUint()) == TRANSFER_EVENT_SIG) { // topic0 is event sig
+        if (bytes32(logTopicRLPList[0].toUint()) == WITHDRAW_EVENT_SIG) { // topic0 is event sig
             require(
                 address(logTopicRLPList[2].toUint()) == address(0), // topic2 is to address
                 "ERC721Predicate: INVALID_RECEIVER"
             );
-
             IRootERC721(rootToken).safeTransferFrom(
                 address(this),
                 withdrawer,
-                logTopicRLPList[3].toUint() // topic3 is tokenId field
+                logRLPList[2].toUint() // tokenId field
             );
 
         } else if (bytes32(logTopicRLPList[0].toUint()) == WITHDRAW_BATCH_EVENT_SIG) { // topic0 is event sig
