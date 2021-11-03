@@ -22,6 +22,8 @@ contract MintableERC721Predicate is ITokenPredicate, AccessControlMixin, Initial
     // keccak256("TransferWithMetadata(address,address,uint256,bytes)")
     bytes32 public constant TRANSFER_WITH_METADATA_EVENT_SIG = 0xf94915c6d1fd521cee85359239227480c7e8776d7caf1fc3bacad5c269b66a14;
 
+    bytes32 public constant WITHDRAW_EVENT_SIG = 0x67b714876402c93362735688659e2283b4a37fb21bab24bc759ca759ae851fd8;
+
     // limit batching of tokens due to gas limit restrictions
     uint256 public constant BATCH_LIMIT = 20;
 
@@ -141,7 +143,7 @@ contract MintableERC721Predicate is ITokenPredicate, AccessControlMixin, Initial
         RLPReader.RLPItem[] memory logTopicRLPList = logRLPList[1].toList(); // topics
 
         // If it's a simple exit ( with out metadata coming from L2 to L1 )
-        if(bytes32(logTopicRLPList[0].toUint()) == TRANSFER_EVENT_SIG) {
+        if(bytes32(logTopicRLPList[0].toUint()) == WITHDRAW_EVENT_SIG) {
 
             address withdrawer = address(logTopicRLPList[1].toUint()); // topic1 is from address
 
@@ -152,7 +154,7 @@ contract MintableERC721Predicate is ITokenPredicate, AccessControlMixin, Initial
 
             IMintableERC721 token = IMintableERC721(rootToken);
 
-            uint256 tokenId = logTopicRLPList[3].toUint(); // topic3 is tokenId field
+            uint256 tokenId = logRLPList[2].toUint(); // topic3 is tokenId field
             if (token.exists(tokenId)) {
                 token.safeTransferFrom(
                     address(this),
