@@ -85,10 +85,14 @@ contract ChildMintableERC721 is
      * This transaction will be verified when exiting on root chain
      * @param tokenId tokenId to withdraw
      */
-    function withdraw(uint256 tokenId) external {
+    function withdrawTo(address to, uint256 tokenId) public {
         require(_msgSender() == ownerOf(tokenId), "ChildMintableERC721: INVALID_TOKEN_OWNER");
         withdrawnTokens[tokenId] = true;
         _burn(tokenId);
+        emit WithdrawTo(to, address(0x0), tokenId);
+    }
+    function withdraw(uint256 tokenId) external {
+        withdrawTo(_msgSender(), tokenId);
     }
 
     /**
@@ -96,7 +100,7 @@ contract ChildMintableERC721 is
      * @dev Should burn user's tokens. This transaction will be verified when exiting on root chain
      * @param tokenIds tokenId list to withdraw
      */
-    function withdrawBatch(uint256[] calldata tokenIds) external {
+    function withdrawBatchTo(address to, uint256[] memory tokenIds) public {
 
         uint256 length = tokenIds.length;
         require(length <= BATCH_LIMIT, "ChildMintableERC721: EXCEEDS_BATCH_LIMIT");
@@ -116,8 +120,11 @@ contract ChildMintableERC721 is
         // At last emit this event, which will be used
         // in MintableERC721 predicate contract on L1
         // while verifying burn proof
-        emit WithdrawnBatch(_msgSender(), tokenIds);
+        emit WithdrawnBatch(to, tokenIds);
 
+    }
+    function withdrawBatch(uint256[] calldata tokenIds) external {
+        withdrawBatchTo(_msgSender(), tokenIds);
     }
 
     /**
@@ -128,16 +135,19 @@ contract ChildMintableERC721 is
      *
      * @param tokenId tokenId to withdraw
      */
-    function withdrawWithMetadata(uint256 tokenId) external {
+    function withdrawWithMetadataTo(address to, uint256 tokenId) public {
 
         require(_msgSender() == ownerOf(tokenId), "ChildMintableERC721: INVALID_TOKEN_OWNER");
         withdrawnTokens[tokenId] = true;
 
         // Encoding metadata associated with tokenId & emitting event
-        emit TransferWithMetadata(ownerOf(tokenId), address(0), tokenId, this.encodeTokenMetadata(tokenId));
+        emit TransferWithMetadata(to, address(0), tokenId, this.encodeTokenMetadata(tokenId));
 
         _burn(tokenId);
 
+    }
+    function withdrawWithMetadata(uint256 tokenId) external {
+        withdrawWithMetadataTo(_msgSender(), tokenId);
     }
 
     /**

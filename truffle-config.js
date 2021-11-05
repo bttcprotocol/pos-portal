@@ -90,7 +90,7 @@ module.exports = {
       gasPrice: 10000000000, // 10 gwei
       skipDryRun: true
     },
-
+  },
   // Set default mocha options here, use special reporters etc.
   mocha: {
     reporter: 'eth-gas-reporter',

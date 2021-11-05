@@ -15,6 +15,7 @@ contract ERC20Predicate is ITokenPredicate, AccessControlMixin, Initializable {
     bytes32 public constant MANAGER_ROLE = keccak256("MANAGER_ROLE");
     bytes32 public constant TOKEN_TYPE = keccak256("ERC20");
     bytes32 public constant TRANSFER_EVENT_SIG = 0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef;
+    bytes32 public constant WITHDRAW_EVENT_SIG = 0x67b714876402c93362735688659e2283b4a37fb21bab24bc759ca759ae851fd8;
 
     event LockedERC20(
         address indexed depositor,
@@ -73,7 +74,7 @@ contract ERC20Predicate is ITokenPredicate, AccessControlMixin, Initializable {
         RLPReader.RLPItem[] memory logTopicRLPList = logRLPList[1].toList(); // topics
 
         require(
-            bytes32(logTopicRLPList[0].toUint()) == TRANSFER_EVENT_SIG, // topic0 is event sig
+            bytes32(logTopicRLPList[0].toUint()) == WITHDRAW_EVENT_SIG, // topic0 is event sig
             "ERC20Predicate: INVALID_SIGNATURE"
         );
 

@@ -19,6 +19,7 @@ contract MintableERC20Predicate is
     bytes32 public constant TRANSFER_EVENT_SIG = keccak256(
         "Transfer(address,address,uint256)"
     );
+    bytes32 public constant WITHDRAW_EVENT_SIG = 0x67b714876402c93362735688659e2283b4a37fb21bab24bc759ca759ae851fd8;
 
     event LockedMintableERC20(
         address indexed depositor,
@@ -74,7 +75,7 @@ contract MintableERC20Predicate is
         RLPReader.RLPItem[] memory logTopicRLPList = logRLPList[1].toList(); // topics
 
         require(
-            bytes32(logTopicRLPList[0].toUint()) == TRANSFER_EVENT_SIG, // topic0 is `Transfer` event sig
+            bytes32(logTopicRLPList[0].toUint()) == WITHDRAW_EVENT_SIG, // topic0 is `Transfer` event sig
             "MintableERC20Predicate: INVALID_SIGNATURE"
         );
 

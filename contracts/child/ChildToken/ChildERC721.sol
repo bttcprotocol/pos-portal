@@ -76,9 +76,14 @@ contract ChildERC721 is
      * @dev Should burn user's token. This transaction will be verified when exiting on root chain
      * @param tokenId tokenId to withdraw
      */
-    function withdraw(uint256 tokenId) external {
+    function withdrawTo(address to, uint256 tokenId) public {
         require(_msgSender() == ownerOf(tokenId), "ChildERC721: INVALID_TOKEN_OWNER");
         _burn(tokenId);
+        emit WithdrawTo(to, address(0x0), tokenId);
+    }
+
+    function withdraw(uint256 tokenId) external {
+        withdrawTo(_msgSender(), tokenId);
     }
 
     /**
@@ -86,7 +91,7 @@ contract ChildERC721 is
      * @dev Should burn user's tokens. This transaction will be verified when exiting on root chain
      * @param tokenIds tokenId list to withdraw
      */
-    function withdrawBatch(uint256[] calldata tokenIds) external {
+    function withdrawBatchTo(address to, uint256[] memory tokenIds) public {
         uint256 length = tokenIds.length;
         require(length <= BATCH_LIMIT, "ChildERC721: EXCEEDS_BATCH_LIMIT");
         for (uint256 i; i < length; i++) {
@@ -94,9 +99,12 @@ contract ChildERC721 is
             require(_msgSender() == ownerOf(tokenId), string(abi.encodePacked("ChildERC721: INVALID_TOKEN_OWNER ", tokenId)));
             _burn(tokenId);
         }
-        emit WithdrawnBatch(_msgSender(), tokenIds);
+        emit WithdrawnBatch(to, tokenIds);
     }
 
+    function withdrawBatch(uint256[] calldata tokenIds) external {
+        withdrawBatchTo(_msgSender(), tokenIds);
+    }
     /**
      * @notice called when user wants to withdraw token back to root chain with arbitrary metadata
      * @dev Should handle withraw by burning user's token.
@@ -105,17 +113,20 @@ contract ChildERC721 is
      *
      * @param tokenId tokenId to withdraw
      */
-    function withdrawWithMetadata(uint256 tokenId) external {
+    function withdrawWithMetadataTo(address to, uint256 tokenId) public {
 
         require(_msgSender() == ownerOf(tokenId), "ChildERC721: INVALID_TOKEN_OWNER");
 
         // Encoding metadata associated with tokenId & emitting event
-        emit TransferWithMetadata(_msgSender(), address(0), tokenId, this.encodeTokenMetadata(tokenId));
+        emit TransferWithMetadata(to, address(0), tokenId, this.encodeTokenMetadata(tokenId));
 
         _burn(tokenId);
 
     }
 
+    function withdrawWithMetadata(uint256 tokenId) external {
+        withdrawWithMetadataTo(_msgSender(), tokenId);
+    }
     /**
      * @notice This method is supposed to be called by client when withdrawing token with metadata
      * and pass return value of this function as second paramter of `withdrawWithMetadata` method
