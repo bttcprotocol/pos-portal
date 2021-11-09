@@ -37,6 +37,7 @@ contract TronRootChainManager is
     bytes32 public constant MAP_TOKEN = keccak256("MAP_TOKEN");
     address public constant ETHER_ADDRESS = 0xff00000000000000000000000000000000000001;
     bytes32 public constant MAPPER_ROLE = keccak256("MAPPER_ROLE");
+    uint256 public constant CHAIN_ID = 0;
 
     function _msgSender()
         internal
@@ -271,7 +272,7 @@ contract TronRootChainManager is
 
         emit TokenMapped(rootToken, childToken, tokenType);
 
-        bytes memory syncData = abi.encode(rootToken, childToken, tokenType);
+        bytes memory syncData = abi.encode(rootToken, childToken, CHAIN_ID, tokenType);
         _stateSender.syncState(
             childChainManagerAddress,
             abi.encode(MAP_TOKEN, syncData)
@@ -356,7 +357,7 @@ contract TronRootChainManager is
             rootToken,
             depositData
         );
-        bytes memory syncData = abi.encode(user, rootToken, depositData);
+        bytes memory syncData = abi.encode(user, rootToken, CHAIN_ID, depositData);
         _stateSender.syncState(
             childChainManagerAddress,
             abi.encode(DEPOSIT, syncData)
