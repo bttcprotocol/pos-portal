@@ -37,7 +37,7 @@ contract RootChainManager is
     bytes32 public constant MAP_TOKEN = keccak256("MAP_TOKEN");
     address public constant ETHER_ADDRESS = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
     bytes32 public constant MAPPER_ROLE = keccak256("MAPPER_ROLE");
-    uint64 public constant CHAIN_ID = 1;
+    uint64 public constant CHAIN_ID = 2;
 
     function _msgSender()
         internal
