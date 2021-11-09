@@ -176,6 +176,7 @@ contract TronRootChainManager is
 
     /**
      * @notice Map a token to enable its movement via the PoS Portal, callable only by mappers
+     * Warn: check the child token whether already mapped on the root chain (like Tron/ETH/BSC...)
      * @param rootToken address of token on root chain
      * @param childToken address of token on child chain
      * @param tokenType bytes32 unique identifier for the token type

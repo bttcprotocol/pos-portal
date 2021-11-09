@@ -37,7 +37,7 @@ contract RootChainManager is
     bytes32 public constant MAP_TOKEN = keccak256("MAP_TOKEN");
     address public constant ETHER_ADDRESS = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
     bytes32 public constant MAPPER_ROLE = keccak256("MAPPER_ROLE");
-    uint64 public constant CHAIN_ID = 2;
+    uint64 public constant CHAIN_ID = 2;  // 1: tron   2: eth  3: bsc
 
     function _msgSender()
         internal
@@ -175,7 +175,8 @@ contract RootChainManager is
     }
 
     /**
-     * @notice Map a token to enable its movement via the PoS Portal, callable only by mappers
+     * @notice Map a token to enable its movement via the PoS Portal, callable only by mappers.
+     * Warn: check the child token whether already mapped on the root chain (like Tron/ETH/BSC...)
      * @param rootToken address of token on root chain
      * @param childToken address of token on child chain
      * @param tokenType bytes32 unique identifier for the token type
