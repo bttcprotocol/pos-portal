@@ -31,9 +31,10 @@ contract ChildChainManager is
 
     function getRootToChildToken(uint64 chainId, address rootToken)
         external
+        view
         returns (address childToken)
     {
-        childToken = rootToChildToken[uint256(rootToken) | (chainId>>160)];
+        childToken = rootToChildToken[uint256(rootToken) | (uint256(chainId)<<160)];
     }
 
     /**
@@ -94,7 +95,7 @@ contract ChildChainManager is
         address rootToken,
         address childToken
     ) external override only(MAPPER_ROLE) {
-        uint256 rootKey = uint256(rootToken) | (chainId>>160);
+        uint256 rootKey = uint256(rootToken) | (uint256(chainId)<<160);
         rootToChildToken[rootKey] = address(0);
         childToRootToken[childToken] = address(0);
 
@@ -102,11 +103,11 @@ contract ChildChainManager is
     }
 
     function _mapToken(uint64 chainId, address rootToken, address childToken) private {
-        uint256 rootKey = uint256(rootToken) | (chainId>>160);
+        uint256 rootKey = uint256(rootToken) | (uint256(chainId)<<160);
         address oldChildToken = rootToChildToken[rootKey];
         address oldRootToken = childToRootToken[childToken];
 
-        uint256 oldRootKey = uint256(oldRootToken) | (chainId>>160);
+        uint256 oldRootKey = uint256(oldRootToken) | (uint256(chainId)<<160);
 
         if (rootToChildToken[oldRootKey] != address(0)) {
             rootToChildToken[oldRootKey] = address(0);
@@ -124,7 +125,7 @@ contract ChildChainManager is
     function _syncDeposit(bytes memory syncData) private {
         (address user, address rootToken, uint64 chainId, bytes memory depositData) = abi
             .decode(syncData, (address, address, uint64, bytes));
-        uint256 rootKey = uint256(rootToken) | (chainId>>160);
+        uint256 rootKey = uint256(rootToken) | (uint256(chainId)<<160);
         address childTokenAddress = rootToChildToken[rootKey];
         require(
             childTokenAddress != address(0x0),
