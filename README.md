@@ -1,113 +1,35 @@
 # Bttc PoS (Proof-of-Stake) portal contracts
 
-Smart contracts that powers the PoS (proof-of-stake) based bridge mechanism for Bttc Network. A cross-chain bridge based on pos consensus, which has both security and ease of use.
+Smart contracts that powers the PoS (proof-of-stake) based bridge mechanism for Bttc Network. 
+A cross-chain bridge based on pos consensus, which has both security and ease of use.
+
+### Core Contracts
+
+- `RootChainManager`: Responsible for the logic of deposit and withdraw
+- `ChildChainManager`: Responsible map token between mainnet and childnet, also mint the token on child chain when token locked on mainnet
+- `ERC20Predicate`: the tokens that user deposit will be locked in the proxy of this contract
+- `MintableERC20Predicate`: like `ERC20Predicate`, also responsible for mint token on mainnet for the token which can be minted on child chain
+- `DummyERC20`: template for ERC20 token in mainnet
+- `ChildERC20`: template for ERC20 token in childnet
 
 ### Dependency
 
 - require node version: v11
 
-### Setup
+### Install dependencies with
 
-```bash
-git clone https://github.com/bttcprotocol/pos-portal
-cd pos-portal
-
+```
 npm install
 ```
 
-### Compile all contracts
+### Compile
 
-```bash
-npm run template:process
-npm run build
+```
+npm run truffle:compile
 ```
 
-### Run testcases
+### Flat contracts
 
-```bash
-npm run test
 ```
-
-### Deploy contracts locally
-
-```bash
-npm run migrate
-```
-
-
-### Deploy contracts on mainnet
-1. Moonwalker needs rabbitmq and local geth running
-```bash
-docker run -d -p 5672:5672 -p 15672:15672 rabbitmq:3-management
-npm run testrpc
-```
-
-2. Export env vars
-```bash
-export MNEMONIC=
-export FROM=
-export PROVIDER_URL=
-export ROOT_CHAIN_ID=
-export CHILD_CHAIN_ID=
-export PLASMA_ROOT_CHAIN=
-export GAS_PRICE=
-```
-
-3. Compile contracts
-```bash
-npm run template:process -- --root-chain-id $ROOT_CHAIN_ID --child-chain-id $CHILD_CHAIN_ID
-npm run build
-```
-
-4. Add root chain contract deployments to queue
-```bash
-npm run truffle exec moonwalker-migrations/queue-root-deployment.js
-```
-
-5. Process queue (rerun if interrupted)
-```bash
-node moonwalker-migrations/process-queue.js
-```
-
-6. Extract contract addresses from moonwalker output
-```bash
-node moonwalker-migrations/extract-addresses.js
-```
-
-7. Deploy child chain contracts
-```bash
-npm run truffle -- migrate --network mainnetChild --f 3 --to 3
-```
-
-8. Add root chain initializations to queue
-```bash
-node moonwalker-migrations/queue-root-initializations.js
-```
-
-9. Process queue (rerun if interrupted)
-```bash
-node moonwalker-migrations/process-queue.js
-```
-
-10. Initialize child chain contracts
-```bash
-npm run truffle -- migrate --network mainnetChild --f 5 --to 5
-```
-
-11. Register State Sync
-- Register RootChainManager and ChildChainManager on StateSender
-- Set stateSenderAddress on RootChainManager
-- Grant STATE_SYNCER_ROLE on ChildChainManager
-
-### Command scripts (Management scripts)
-
-```bash
-npm run truffle exec scripts/update-implementation.js -- --network <network-name> <new-address>
-```
-
-### Transfer proxy ownership and admin role
-Set list of contract addresses and new owner address in `6_change_owners.js` migration script  
-Set `MNEMONIC` and `API_KEY` as env variables
-```bash
-npm run change-owners -- --network <network-name>
+node scripts/flatten-contracts.js
 ```
