@@ -19,7 +19,7 @@ contract ChildChainManager is
     bytes32 public constant MAPPER_ROLE = keccak256("MAPPER_ROLE");
     bytes32 public constant STATE_SYNCER_ROLE = keccak256("STATE_SYNCER_ROLE");
 
-    mapping(address => address) public rootToChildToken;
+    mapping(uint256 => address) public rootToChildToken;
     mapping(address => address) public childToRootToken;
 
     function initialize(address _owner) external initializer {
@@ -29,6 +29,14 @@ contract ChildChainManager is
         _setupRole(STATE_SYNCER_ROLE, _owner);
     }
 
+    function getRootToChildToken(uint64 chainId, address rootToken)
+        external
+        view
+        returns (address childToken)
+    {
+        childToken = rootToChildToken[uint256(rootToken) | (uint256(chainId)<<160)];
+    }
+
     /**
      * @notice Map a token to enable its movement via the PoS Portal, callable only by mappers
      * Normally mapping should happen automatically using state sync
@@ -36,12 +44,12 @@ contract ChildChainManager is
      * @param rootToken address of token on root chain
      * @param childToken address of token on child chain
      */
-    function mapToken(address rootToken, address childToken)
+    function mapToken(uint64 chainId, address rootToken, address childToken)
         external
         override
         only(MAPPER_ROLE)
     {
-        _mapToken(rootToken, childToken);
+        _mapToken(chainId, rootToken, childToken);
     }
 
     /**
@@ -67,11 +75,11 @@ contract ChildChainManager is
         if (syncType == DEPOSIT) {
             _syncDeposit(syncData);
         } else if (syncType == MAP_TOKEN) {
-            (address rootToken, address childToken, ) = abi.decode(
+            (address rootToken, address childToken, uint64 chainId, ) = abi.decode(
                 syncData,
-                (address, address, bytes32)
+                (address, address, uint64, bytes32)
             );
-            _mapToken(rootToken, childToken);
+            _mapToken(chainId, rootToken, childToken);
         } else {
             revert("ChildChainManager: INVALID_SYNC_TYPE");
         }
@@ -83,37 +91,42 @@ contract ChildChainManager is
      * clean method is used to clean pollulated mapping
      */
     function cleanMapToken(
+        uint64 chainId,
         address rootToken,
         address childToken
     ) external override only(MAPPER_ROLE) {
-        rootToChildToken[rootToken] = address(0);
+        uint256 rootKey = uint256(rootToken) | (uint256(chainId)<<160);
+        rootToChildToken[rootKey] = address(0);
         childToRootToken[childToken] = address(0);
 
-        emit TokenMapped(rootToken, childToken);
+        emit TokenMapped(chainId, rootToken, childToken);
     }
 
-    function _mapToken(address rootToken, address childToken) private {
-        address oldChildToken = rootToChildToken[rootToken];
+    function _mapToken(uint64 chainId, address rootToken, address childToken) private {
+        uint256 rootKey = uint256(rootToken) | (uint256(chainId)<<160);
+        address oldChildToken = rootToChildToken[rootKey];
         address oldRootToken = childToRootToken[childToken];
 
-        if (rootToChildToken[oldRootToken] != address(0)) {
-            rootToChildToken[oldRootToken] = address(0);
-        }
+        uint256 oldRootKey = uint256(oldRootToken) | (uint256(chainId)<<160);
 
+        if (rootToChildToken[oldRootKey] != address(0)) {
+            rootToChildToken[oldRootKey] = address(0);
+        }
         if (childToRootToken[oldChildToken] != address(0)) {
             childToRootToken[oldChildToken] = address(0);
         }
 
-        rootToChildToken[rootToken] = childToken;
+        rootToChildToken[rootKey] = childToken;
         childToRootToken[childToken] = rootToken;
 
-        emit TokenMapped(rootToken, childToken);
+        emit TokenMapped(chainId, rootToken, childToken);
     }
 
     function _syncDeposit(bytes memory syncData) private {
-        (address user, address rootToken, bytes memory depositData) = abi
-            .decode(syncData, (address, address, bytes));
-        address childTokenAddress = rootToChildToken[rootToken];
+        (address user, address rootToken, uint64 chainId, bytes memory depositData) = abi
+            .decode(syncData, (address, address, uint64, bytes));
+        uint256 rootKey = uint256(rootToken) | (uint256(chainId)<<160);
+        address childTokenAddress = rootToChildToken[rootKey];
         require(
             childTokenAddress != address(0x0),
             "ChildChainManager: TOKEN_NOT_MAPPED"
