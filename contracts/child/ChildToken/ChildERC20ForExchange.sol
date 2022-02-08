@@ -81,16 +81,16 @@ contract ChildERC20ForExchange is
 
     function swapIn(uint256 amount) public {
         require(originToken != address(0x0), "origin token not set");
-        IERC20(originToken).transferFrom(msg.sender, address(this), amount);
-        _mint(msg.sender, amount);
-        emit SwapIn(msg.sender, amount);
+        IERC20(originToken).transferFrom(_msgSender(), address(this), amount);
+        _mint(_msgSender(), amount);
+        emit SwapIn(_msgSender(), amount);
     }
 
     function swapOut(uint256 amount) public {
         require(originToken != address(0x0), "origin token not set");
-        _burn(msg.sender, amount);
-        IERC20(originToken).transfer(msg.sender, amount);
-        emit SwapOut(msg.sender, amount);
+        _burn(_msgSender(), amount);
+        IERC20(originToken).transfer(_msgSender(), amount);
+        emit SwapOut(_msgSender(), amount);
     }
 
 }
