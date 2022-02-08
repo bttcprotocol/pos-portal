@@ -15,6 +15,9 @@ contract ChildERC20ForExchange is
     NativeMetaTransaction,
     ContextMixin
 {
+    event SwapIn(address indexed sender, uint256 value);
+    event SwapOut(address indexed sender, uint256 value);
+
     bytes32 public constant DEPOSITOR_ROLE = keccak256("DEPOSITOR_ROLE");
 
     address public immutable originToken;
@@ -80,12 +83,14 @@ contract ChildERC20ForExchange is
         require(originToken != address(0x0), "origin token not set");
         IERC20(originToken).transferFrom(msg.sender, address(this), amount);
         _mint(msg.sender, amount);
+        emit SwapIn(msg.sender, amount);
     }
 
     function swapOut(uint256 amount) public {
         require(originToken != address(0x0), "origin token not set");
         _burn(msg.sender, amount);
         IERC20(originToken).transfer(msg.sender, amount);
+        emit SwapOut(msg.sender, amount);
     }
 
 }
