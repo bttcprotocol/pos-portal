@@ -26,7 +26,7 @@ contract ChildERC20ForExchange is
         address childChainManager,
         address origin_
     ) public ERC20(name_, symbol_) {
-        _setupContractId("ChildERC20");
+        _setupContractId("ChildERC20ForExchange");
         _setupDecimals(decimals_);
         _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
         _setupRole(DEPOSITOR_ROLE, childChainManager);
