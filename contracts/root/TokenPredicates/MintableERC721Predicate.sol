@@ -40,6 +40,16 @@ contract MintableERC721Predicate is ITokenPredicate, AccessControlMixin, Initial
         address indexed rootToken,
         uint256[] tokenIds
     );
+    event Withdraw(
+        address indexed withdrawer,
+        address indexed rootToken,
+        uint256 tokenId
+    );
+    event WithdrawBatch(
+        address indexed withdrawer,
+        address indexed rootToken,
+        uint256[] tokenIds
+    );
 
     constructor() public {}
 
@@ -164,6 +174,7 @@ contract MintableERC721Predicate is ITokenPredicate, AccessControlMixin, Initial
             } else {
                 token.mint(withdrawer, tokenId);
             }
+            emit Withdraw(withdrawer, rootToken, tokenId);
 
         } else if (bytes32(logTopicRLPList[0].toUint()) == WITHDRAW_BATCH_EVENT_SIG) { // topic0 is event sig
             // If it's a simple batch exit, where a set of
@@ -204,6 +215,7 @@ contract MintableERC721Predicate is ITokenPredicate, AccessControlMixin, Initial
                 }
 
             }
+            emit WithdrawBatch(withdrawer, rootToken, tokenIds);
 
         } else if (bytes32(logTopicRLPList[0].toUint()) == TRANSFER_WITH_METADATA_EVENT_SIG) { 
             // If this is NFT exit with metadata i.e. URI 👆
@@ -242,6 +254,7 @@ contract MintableERC721Predicate is ITokenPredicate, AccessControlMixin, Initial
                 
                 token.mint(withdrawer, tokenId, metaData);
             }
+            emit Withdraw(withdrawer, rootToken, tokenId);
 
         } else {
             // Attempting to exit with some event signature from L2, which is

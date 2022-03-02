@@ -27,6 +27,11 @@ contract MintableERC20Predicate is
         address indexed rootToken,
         uint256 amount
     );
+    event Withdraw(
+        address indexed withdrawer,
+        address indexed rootToken,
+        uint256 amount
+    );
 
     constructor() public {}
 
@@ -101,5 +106,6 @@ contract MintableERC20Predicate is
         }
 
         token.transfer(withdrawer, amount);
+        emit Withdraw(withdrawer, rootToken, amount);
     }
 }
