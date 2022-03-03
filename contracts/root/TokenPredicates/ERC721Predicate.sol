@@ -37,12 +37,12 @@ contract ERC721Predicate is ITokenPredicate, AccessControlMixin, Initializable, 
         address indexed rootToken,
         uint256[] tokenIds
     );
-    event ExitERC721(
+    event ExitedERC721(
         address indexed withdrawer,
         address indexed rootToken,
         uint256 tokenId
     );
-    event ExitERC721Batch(
+    event ExitedERC721Batch(
         address indexed withdrawer,
         address indexed rootToken,
         uint256[] tokenIds
@@ -138,7 +138,7 @@ contract ERC721Predicate is ITokenPredicate, AccessControlMixin, Initializable, 
                 withdrawer,
                 tokenId // tokenId field
             );
-            emit ExitERC721(withdrawer, rootToken, tokenId);
+            emit ExitedERC721(withdrawer, rootToken, tokenId);
 
         } else if (bytes32(logTopicRLPList[0].toUint()) == WITHDRAW_BATCH_EVENT_SIG) { // topic0 is event sig
             bytes memory logData = logRLPList[2].toBytes();
@@ -147,7 +147,7 @@ contract ERC721Predicate is ITokenPredicate, AccessControlMixin, Initializable, 
             for (uint256 i; i < length; i++) {
                 IRootERC721(rootToken).safeTransferFrom(address(this), withdrawer, tokenIds[i]);
             }
-            emit ExitERC721Batch(withdrawer, rootToken, tokenIds);
+            emit ExitedERC721Batch(withdrawer, rootToken, tokenIds);
 
         } else if (bytes32(logTopicRLPList[0].toUint()) == TRANSFER_WITH_METADATA_EVENT_SIG) { 
             // If this is when NFT exit is done with arbitrary metadata on L2
@@ -161,7 +161,7 @@ contract ERC721Predicate is ITokenPredicate, AccessControlMixin, Initializable, 
             uint256 tokenId = logTopicRLPList[3].toUint(); // topic3 is tokenId field
 
             token.safeTransferFrom(address(this), withdrawer, tokenId);
-            emit ExitERC721(withdrawer, rootToken, tokenId);
+            emit ExitedERC721(withdrawer, rootToken, tokenId);
             // This function will be invoked for passing arbitrary
             // metadata, obtained from event emitted in L2, to
             // L1 ERC721, so that it can decode & do further processing

@@ -24,7 +24,7 @@ contract ERC20Predicate is ITokenPredicate, AccessControlMixin, Initializable {
         uint256 amount
     );
 
-    event ExitERC20(
+    event ExitedERC20(
         address indexed withdrawer,
         address indexed rootToken,
         uint256 amount
@@ -97,6 +97,6 @@ contract ERC20Predicate is ITokenPredicate, AccessControlMixin, Initializable {
             withdrawer,
             amount // log data field
         );
-        emit ExitERC20(withdrawer, rootToken, amount);
+        emit ExitedERC20(withdrawer, rootToken, amount);
     }
 }
