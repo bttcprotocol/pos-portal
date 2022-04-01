@@ -169,5 +169,9 @@ contractsToFlatten.forEach(async (c) => {
   const source = `./${c.path}/${c.fileName}`
   const dest = `./flat/${c.fileName}`
   const flat = await flatten([source])
+  if(!fs.existsSync("./flat")){
+    console.log("new path ", "./flat")
+    fs.mkdirSync("./flat")
+  }
   fs.writeFileSync(dest, flat)
 })
