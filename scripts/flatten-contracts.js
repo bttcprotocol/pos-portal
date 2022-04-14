@@ -162,6 +162,14 @@ const contractsToFlatten = [
   {
     path: 'contracts/tunnel',
     fileName: 'ChildTunnel.sol'
+  },
+  {
+    path: 'contracts/child/ChildToken/ChildERC20Exit',
+    fileName: 'ChildERC20Exit.sol'
+  },
+  {
+    path: 'contracts/child/ChildToken/ChildERC20Exit',
+    fileName: 'ChildERC20ExitProxy.sol'
   }
 ]
 
