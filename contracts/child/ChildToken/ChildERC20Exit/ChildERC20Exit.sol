@@ -1,14 +1,12 @@
 pragma solidity 0.6.6;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {ChildERC20ExitStorage} from "./ChildERC20ExitStorage.sol";
 import {IChildERC20Exit} from "./IChildERC20Exit.sol";
 import {IChildToken} from "./IChildToken.sol";
 import {IChildTokenForExchange} from "./IChildTokenForExchange.sol";
 
 contract ChildERC20Exit is
-    ERC20,
     ChildERC20ExitStorage,
     IChildERC20Exit
 {
@@ -41,15 +39,15 @@ contract ChildERC20Exit is
     external override {
         tokenWithdraw.transferFrom(msgSender(), address(this), amount);
         if (tokenWithdraw == tokenExit) {
-            IChildTokenForExchange(tokenExit).withdrawTo(to, amount);
+            tokenExit.withdrawTo(to, amount);
             return;
         }
         IChildToken originToken = tokenToOrigin[tokenWithdraw];
-        require(originToken != address(0), "originToken not zero");
+        require(address(originToken) != address(0), "originToken not zero");
         if (originToken != tokenWithdraw) {
-            IChildTokenForExchange(tokenWithdraw).swapOut(amount);
+            IChildTokenForExchange(address(tokenWithdraw)).swapOut(amount);
         }
-        IChildTokenForExchange(tokenExit).swapIn(amount);
+        IChildTokenForExchange(address(tokenExit)).swapIn(amount);
         tokenExit.withdrawTo(to, amount);
     }
 

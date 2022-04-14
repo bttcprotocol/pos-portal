@@ -4,7 +4,7 @@ pragma solidity 0.6.6;
 import {AccessControlMixin} from "../../../common/AccessControlMixin.sol";
 import {NativeMetaTransaction} from "../../../common/NativeMetaTransaction.sol";
 import {ContextMixin} from "../../../common/ContextMixin.sol";
-import {IChildToken} from "../IChildToken.sol";
+import {IChildToken} from "./IChildToken.sol";
 import {IChildTokenForExchange} from "./IChildTokenForExchange.sol";
 
 
