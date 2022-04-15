@@ -47,6 +47,7 @@ contract ChildERC20Exit is
         if (originToken != tokenWithdraw) {
             IChildTokenForExchange(address(tokenWithdraw)).swapOut(amount);
         }
+        tokenWithdraw.approve(address(tokenExit), amount);
         IChildTokenForExchange(address(tokenExit)).swapIn(amount);
         tokenExit.withdrawTo(to, amount);
     }
