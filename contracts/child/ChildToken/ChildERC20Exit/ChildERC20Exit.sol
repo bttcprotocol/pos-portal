@@ -27,7 +27,7 @@ contract ChildERC20Exit is
     override
     only(MAPPER_ROLE)
     {
-        require(address(originToken)!=address(0), "originToken not zero");
+        require(address(originToken)!=address(0), "originToken can't be zero");
         childMappingInfo[originToken] = MappingInfo(tokenA,tokenB);
         tokenToOrigin[tokenA] = originToken;
         tokenToOrigin[tokenB] = originToken;
@@ -43,9 +43,13 @@ contract ChildERC20Exit is
             return;
         }
         IChildToken originToken = tokenToOrigin[tokenWithdraw];
-        require(address(originToken) != address(0), "originToken not zero");
-        if (originToken != tokenWithdraw) {
+        require(address(originToken) != address(0), "originToken can't be zero");
+        if (tokenWithdraw != originToken) {
             IChildTokenForExchange(address(tokenWithdraw)).swapOut(amount);
+        }
+        if (tokenExit == originToken) {
+            tokenExit.withdrawTo(to, amount);
+            return;
         }
         tokenWithdraw.approve(address(tokenExit), amount);
         IChildTokenForExchange(address(tokenExit)).swapIn(amount);
