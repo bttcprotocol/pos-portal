@@ -56,4 +56,8 @@ contract ChildERC20Exit is
         tokenExit.withdrawTo(to, amount);
     }
 
+    function originToken(IChildToken token) external view returns(IChildToken) {
+        return tokenToOrigin[token];
+    }
+
 }
