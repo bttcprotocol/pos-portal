@@ -9,4 +9,10 @@ interface IChildERC20Exit
 
     function withdrawTo(address to, IChildToken tokenWithdraw, IChildToken tokenExit, uint256
         amount) external;
+
+    function withdrawBTT(address to,IChildToken tokenWithdraw, IChildToken tokenExit, uint256
+        amount) payable external;
+
+    function withdrawBTT2(address to,IChildToken tokenWithdraw, IChildToken tokenExit, uint256
+        amount) payable external;
 }
