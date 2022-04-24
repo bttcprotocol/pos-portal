@@ -59,10 +59,10 @@ contract ChildERC20Exit is
 
     /**
      * @notice function to swap and withdraw ERC20 token automatically except btt interrelated token
-     * @param token receive address
-     * @param token to withdraw
-     * @param token to exit
-     * @param token amount
+     * @param to token receive address
+     * @param tokenWithdraw token to withdraw
+     * @param tokenExit token to exit
+     * @param amount token amount
      */
     function withdrawTo(address to, IChildToken tokenWithdraw, IChildToken tokenExit, uint256
         amount)
@@ -90,10 +90,10 @@ contract ChildERC20Exit is
     /**
      * @notice function to swap and withdraw btt interrelated token automatically,it can receive
      *  call value, if token to withdraw is btt, msg value can't be less than amount
-     * @param token receive address
-     * @param token to withdraw
-     * @param token to exit
-     * @param token amount
+     * @param to token receive address
+     * @param tokenWithdraw token to withdraw
+     * @param tokenExit token to exit
+     * @param amount token amount
      */
     function withdrawBTT(address to,IChildToken tokenWithdraw, IChildToken tokenExit, uint256
         amount)
