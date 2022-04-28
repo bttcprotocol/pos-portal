@@ -7,7 +7,7 @@ import {NativeMetaTransaction} from "../../common/NativeMetaTransaction.sol";
 import {ContextMixin} from "../../common/ContextMixin.sol";
 
 
-contract ChildERC20 is
+contract USDD_t is
     ERC20,
     IChildToken,
     AccessControlMixin,
@@ -22,9 +22,8 @@ contract ChildERC20 is
         uint8 decimals_,
         address childChainManager
     ) public ERC20(name_, symbol_) {
-        _setupContractId("ChildERC20");
+        _setupContractId("USDD_t");
         _setupDecimals(decimals_);
-        _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
         _setupRole(DEPOSITOR_ROLE, childChainManager);
         _initializeEIP712(name_);
     }
