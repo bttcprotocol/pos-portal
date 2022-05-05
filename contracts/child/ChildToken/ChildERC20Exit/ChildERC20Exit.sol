@@ -67,6 +67,8 @@ contract ChildERC20Exit is
     function withdrawTo(address to, IChildToken tokenWithdraw, IChildToken tokenExit, uint256
         amount)
     external override open() {
+        emit ExitTokenTo(msg.sender, to, address(tokenWithdraw), address(tokenExit), amount);
+
         IERC20(tokenWithdraw).safeTransferFrom(msgSender(), address(this), amount);
         if (tokenWithdraw == tokenExit) {
             tokenExit.withdrawTo(to, amount);
@@ -98,6 +100,8 @@ contract ChildERC20Exit is
     function withdrawBTT(address to,IChildToken tokenWithdraw, IChildToken tokenExit, uint256
         amount)
      payable external override open() {
+        emit ExitTokenTo(msg.sender, to, address(tokenWithdraw), address(tokenExit), amount);
+
         if (address(tokenWithdraw) == address(0x1010)) {
             require(msg.value >= amount, "msg value can't be less than amount");
             if (address(tokenExit) == address(0x1010)) {
