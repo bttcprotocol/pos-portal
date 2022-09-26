@@ -8,7 +8,7 @@ import {ContextMixin} from "../../../common/ContextMixin.sol";
 import {IChildToken} from "./IChildToken.sol";
 import {IChildERC20Exit} from "./IChildERC20Exit.sol";
 
-contract ChildERC20Relayer is AccessControlMixin, NativeMetaTransaction, ContextMixin {
+contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMixin {
     using SafeERC20 for IERC20;
 
     event Start(uint256 indexed id, address indexed relayer, address to, address tokenWithdraw, address tokenExit, uint256 total);
@@ -28,11 +28,11 @@ contract ChildERC20Relayer is AccessControlMixin, NativeMetaTransaction, Context
         address _manager,
         address _exitHelper
     ) public {
-        _setupContractId("ChildERC20Relayer");
+        _setupContractId("ChildERC20Relay");
         _setupRole(DEFAULT_ADMIN_ROLE, _admin);
         _setupRole(MANAGER_ROLE, _manager);
         exitHelper = _exitHelper;
-        _initializeEIP712("ChildERC20Relayer");
+        _initializeEIP712("ChildERC20Relay");
     }
 
     function setRelayerTokenFees(address relayer, IChildToken childToken, uint256 fee) external only(MANAGER_ROLE) {
