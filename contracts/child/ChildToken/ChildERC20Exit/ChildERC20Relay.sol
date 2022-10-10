@@ -39,6 +39,7 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
     }
 
     function setRelayerStates(address relayer, bool state) external only(MANAGER_ROLE) {
+        require(relayer != address(0x00), "ChildERC20Relayer: relayer should not be zero address");
         relayerStates[relayer] = state;
 
         emit RelayerUpdated(relayer, state);
