@@ -45,7 +45,7 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
     }
 
     function setRelayerTokenFees(address relayer, IChildToken childToken, uint256 fee) external only(MANAGER_ROLE) {
-        require(relayerStates[relayer] == true, "ChildERC20Relayer: relayer is not active");
+        require(relayerStates[relayer], "ChildERC20Relayer: relayer is not active");
 
         relayerTokenFees[relayer][childToken] = fee;
         emit FeeUpdated(relayer, address(childToken), fee);
