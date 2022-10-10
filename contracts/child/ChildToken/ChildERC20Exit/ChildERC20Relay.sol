@@ -16,10 +16,12 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
         address tokenWithdraw, address tokenExit, uint256 actual, uint256 fee);
     event RelayEnd(uint256 indexed id, address indexed relayer);
     event FeeUpdated(address indexed relayer, address indexed tokenExit, uint256 fee);
+    event RelayerUpdated(address indexed relayer, bool state);
 
     uint256 public nonce;
     IChildERC20Exit public exitHelper;
     mapping(address => mapping(IChildToken => uint256)) public relayerTokenFees;
+    mapping(address => bool) relayerStates;
     mapping(IChildToken => bool) public approved;
 
     bytes32 public constant MANAGER_ROLE = keccak256("MANAGER_ROLE");
@@ -36,7 +38,15 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
         _initializeEIP712("ChildERC20Relay");
     }
 
+    function setRelayerStates(address relayer, bool state) external only(MANAGER_ROLE) {
+        relayerStates[relayer] = state;
+
+        emit RelayerUpdated(relayer, state);
+    }
+
     function setRelayerTokenFees(address relayer, IChildToken childToken, uint256 fee) external only(MANAGER_ROLE) {
+        require(relayerStates[relayer] == true, "ChildERC20Relayer: relayer is not active");
+
         relayerTokenFees[relayer][childToken] = fee;
         emit FeeUpdated(relayer, address(childToken), fee);
     }
@@ -44,6 +54,7 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
     function withdrawToByRelayer(address to, IChildToken tokenWithdraw, IChildToken tokenExit, uint256
         amount, address relayer)
     external {
+        require(relayerStates[relayer], "ChildERC20Relayer: relayer is not active");
 
         uint256 fee = relayerTokenFees[relayer][tokenExit];
         require(fee > 0, "ChildERC20Relayer: unsupported relayer and exitToken");
@@ -71,6 +82,7 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
     function withdrawBTTByRelayer(address to, IChildToken tokenWithdraw, IChildToken tokenExit, uint256
         amount, address payable relayer)
     payable external {
+        require(relayerStates[relayer], "ChildERC20Relayer: relayer is not active");
 
         uint256 fee = relayerTokenFees[relayer][tokenExit];
         require(fee > 0, "ChildERC20Relayer: unsupported relayer and exitToken");
