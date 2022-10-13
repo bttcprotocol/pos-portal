@@ -21,7 +21,7 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
     uint256 public nonce;
     IChildERC20Exit public exitHelper;
     mapping(address => mapping(IChildToken => uint256)) public relayerTokenFees;
-    mapping(address => bool) relayerStates;
+    mapping(address => bool) public relayerStates;
     mapping(IChildToken => bool) public approved;
 
     bytes32 public constant MANAGER_ROLE = keccak256("MANAGER_ROLE");
