@@ -39,9 +39,9 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
     }
 
     function setRelayerStates(address relayer, bool state) external {
-        require(relayer != address(0x00), "ChildERC20Relayer: relayer should not be zero address");
+        require(relayer != address(0x00), "ChildERC20Relay: relayer should not be zero address");
         if (!hasRole(MANAGER_ROLE, msgSender())) {
-            require(relayer == msgSender() && state == false, "ChildERC20Relayer: INSUFFICIENT_PERMISSIONS");
+            require(relayer == msgSender() && state == false, "ChildERC20Relay: INSUFFICIENT_PERMISSIONS");
         }
 
         relayerStates[relayer] = state;
@@ -49,9 +49,9 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
     }
 
     function setRelayerTokenFees(address relayer, IChildToken childToken, uint256 fee) external {
-        require(relayerStates[relayer], "ChildERC20Relayer: relayer is not active");
+        require(relayerStates[relayer], "ChildERC20Relay: relayer is not active");
         if (!hasRole(MANAGER_ROLE, msgSender())) {
-            require(relayer == msgSender(), "ChildERC20Relayer: INSUFFICIENT_PERMISSIONS");
+            require(relayer == msgSender(), "ChildERC20Relay: INSUFFICIENT_PERMISSIONS");
         }
 
         relayerTokenFees[relayer][childToken] = fee;
@@ -61,11 +61,11 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
     function withdrawToByRelayer(address to, IChildToken tokenWithdraw, IChildToken tokenExit, uint256
         amount, address relayer)
     external {
-        require(relayerStates[relayer], "ChildERC20Relayer: relayer is not active");
+        require(relayerStates[relayer], "ChildERC20Relay: relayer is not active");
 
         uint256 fee = relayerTokenFees[relayer][tokenExit];
-        require(fee > 0, "ChildERC20Relayer: unsupported relayer and exitToken");
-        require(amount > fee, "ChildERC20Relayer: amount must be larger than fee");
+        require(fee > 0, "ChildERC20Relay: unsupported relayer and exitToken");
+        require(amount > fee, "ChildERC20Relay: amount must be larger than fee");
         uint256 actualExit = amount - fee;
 
         uint256 _nonce = nonce + 1;
@@ -89,11 +89,11 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
     function withdrawBTTByRelayer(address to, IChildToken tokenWithdraw, IChildToken tokenExit, uint256
         amount, address payable relayer)
     payable external {
-        require(relayerStates[relayer], "ChildERC20Relayer: relayer is not active");
+        require(relayerStates[relayer], "ChildERC20Relay: relayer is not active");
 
         uint256 fee = relayerTokenFees[relayer][tokenExit];
-        require(fee > 0, "ChildERC20Relayer: unsupported relayer and exitToken");
-        require(amount > fee, "ChildERC20Relayer: amount must be larger than fee");
+        require(fee > 0, "ChildERC20Relay: unsupported relayer and exitToken");
+        require(amount > fee, "ChildERC20Relay: amount must be larger than fee");
         uint256 actualExit = amount - fee;
 
         uint256 _nonce = nonce + 1;
