@@ -38,15 +38,21 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
         _initializeEIP712("ChildERC20Relay");
     }
 
-    function setRelayerStates(address relayer, bool state) external only(MANAGER_ROLE) {
+    function setRelayerStates(address relayer, bool state) external {
         require(relayer != address(0x00), "ChildERC20Relayer: relayer should not be zero address");
-        relayerStates[relayer] = state;
+        if (!hasRole(MANAGER_ROLE, msgSender())) {
+            require(relayer == msgSender() && state == false, "ChildERC20Relayer: INSUFFICIENT_PERMISSIONS");
+        }
 
+        relayerStates[relayer] = state;
         emit RelayerUpdated(relayer, state);
     }
 
-    function setRelayerTokenFees(address relayer, IChildToken childToken, uint256 fee) external only(MANAGER_ROLE) {
+    function setRelayerTokenFees(address relayer, IChildToken childToken, uint256 fee) external {
         require(relayerStates[relayer], "ChildERC20Relayer: relayer is not active");
+        if (!hasRole(MANAGER_ROLE, msgSender())) {
+            require(relayer == msgSender(), "ChildERC20Relayer: INSUFFICIENT_PERMISSIONS");
+        }
 
         relayerTokenFees[relayer][childToken] = fee;
         emit FeeUpdated(relayer, address(childToken), fee);
