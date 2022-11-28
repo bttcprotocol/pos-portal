@@ -13,14 +13,16 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
 
     event RelayStart(uint256 indexed id, address indexed relayer);
     event RelayExit(uint256 indexed id, address indexed relayer, address to,
-        address tokenWithdraw, address tokenExit, uint256 actual, uint256 fee);
+        address tokenWithdraw, address tokenExit, uint256 actual, uint256 fee, uint256 refuelFee);
     event RelayEnd(uint256 indexed id, address indexed relayer);
     event FeeUpdated(address indexed relayer, address indexed tokenExit, uint256 fee);
+    event RefuelFeeUpdated(address indexed relayer, address indexed tokenExit, uint256 refuelFee);
     event RelayerUpdated(address indexed relayer, bool state);
 
     uint256 public nonce;
     IChildERC20Exit public exitHelper;
     mapping(address => mapping(IChildToken => uint256)) public relayerTokenFees;
+    mapping(address => mapping(IChildToken => uint256)) public relayerTokenRefuelFees;
     mapping(address => bool) public relayerStates;
     mapping(IChildToken => bool) public approved;
 
@@ -58,43 +60,67 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
         emit FeeUpdated(relayer, address(childToken), fee);
     }
 
+    function setRelayerTokenRefuelFees(address relayer, IChildToken childToken, uint256 refuelFee) external {
+        require(relayerStates[relayer], "ChildERC20Relay: relayer is not active");
+        if (!hasRole(MANAGER_ROLE, msgSender())) {
+            require(relayer == msgSender(), "ChildERC20Relay: INSUFFICIENT_PERMISSIONS");
+        }
+
+        relayerTokenRefuelFees[relayer][childToken] = refuelFee;
+        emit RefuelFeeUpdated(relayer, address(childToken), refuelFee);
+    }
+
     function withdrawToByRelayer(address to, IChildToken tokenWithdraw, IChildToken tokenExit, uint256
-        amount, address relayer)
+        amount, address relayer, bool withRefuel)
     external {
         require(relayerStates[relayer], "ChildERC20Relay: relayer is not active");
 
         uint256 fee = relayerTokenFees[relayer][tokenExit];
         require(fee > 0, "ChildERC20Relay: unsupported relayer and exitToken");
-        require(amount > fee, "ChildERC20Relay: amount must be larger than fee");
-        uint256 actualExit = amount - fee;
+
+        uint256 refuelFee = 0;
+        if (withRefuel) {
+            refuelFee = relayerTokenRefuelFees[relayer][tokenExit];
+            require(refuelFee > 0, "ChildERC20Relay: unsupported relayer and exitToken for refuel");
+        }
+
+        require(amount > fee + refuelFee, "ChildERC20Relay: amount must be larger than fee");
+        uint256 actualExit = amount - fee - refuelFee;
 
         uint256 _nonce = nonce + 1;
         nonce = _nonce;
         emit RelayStart(_nonce, relayer);
 
         IERC20(tokenWithdraw).safeTransferFrom(msgSender(), address(this), amount);
-        IERC20(tokenWithdraw).transfer(relayer, fee);
+        IERC20(tokenWithdraw).transfer(relayer, fee + refuelFee);
 
         if (!approved[tokenWithdraw]) {
             IERC20(tokenWithdraw).approve(address(exitHelper), uint256(-1));
             approved[tokenWithdraw] = true;
         }
 
-        emit RelayExit(_nonce, relayer, to, address(tokenWithdraw), address(tokenExit), actualExit, fee);
+        emit RelayExit(_nonce, relayer, to, address(tokenWithdraw), address(tokenExit), actualExit, fee, refuelFee);
         exitHelper.withdrawTo(to, tokenWithdraw, tokenExit, actualExit);
 
         emit RelayEnd(_nonce, relayer);
     }
 
     function withdrawBTTByRelayer(address to, IChildToken tokenWithdraw, IChildToken tokenExit, uint256
-        amount, address payable relayer)
+        amount, address payable relayer, bool withRefuel)
     payable external {
         require(relayerStates[relayer], "ChildERC20Relay: relayer is not active");
 
         uint256 fee = relayerTokenFees[relayer][tokenExit];
         require(fee > 0, "ChildERC20Relay: unsupported relayer and exitToken");
-        require(amount > fee, "ChildERC20Relay: amount must be larger than fee");
-        uint256 actualExit = amount - fee;
+
+        uint256 refuelFee = 0;
+        if (withRefuel) {
+            refuelFee = relayerTokenRefuelFees[relayer][tokenExit];
+            require(refuelFee > 0, "ChildERC20Relay: unsupported relayer and exitToken for refuel");
+        }
+
+        require(amount > fee + refuelFee, "ChildERC20Relay: amount must be larger than fee");
+        uint256 actualExit = amount - fee - refuelFee;
 
         uint256 _nonce = nonce + 1;
         nonce = _nonce;
@@ -102,28 +128,28 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
 
         if (address(tokenWithdraw) == address(0x1010)) {
             require(msg.value >= amount, "msg value can't be less than amount");
-            relayer.transfer(fee);
+            relayer.transfer(fee + refuelFee);
 
-            emit RelayExit(_nonce, relayer, to, address(tokenWithdraw), address(tokenExit), actualExit, fee);
+            emit RelayExit(_nonce, relayer, to, address(tokenWithdraw), address(tokenExit), actualExit, fee, refuelFee);
             exitHelper.withdrawBTT{value:actualExit}(to, tokenWithdraw, tokenExit, actualExit);
+
+            emit RelayEnd(_nonce, relayer);
 
             if (msg.value > amount) {
                 msg.sender.transfer(msg.value - amount);
             }
-
-            emit RelayEnd(_nonce, relayer);
             return;
         }
 
         IERC20(tokenWithdraw).safeTransferFrom(msgSender(), address(this), amount);
-        IERC20(tokenWithdraw).transfer(relayer, fee);
+        IERC20(tokenWithdraw).transfer(relayer, fee + refuelFee);
 
         if (!approved[tokenWithdraw]) {
             IERC20(tokenWithdraw).approve(address(exitHelper), uint256(-1));
             approved[tokenWithdraw] = true;
         }
 
-        emit RelayExit(_nonce, relayer, to, address(tokenWithdraw), address(tokenExit), actualExit, fee);
+        emit RelayExit(_nonce, relayer, to, address(tokenWithdraw), address(tokenExit), actualExit, fee, refuelFee);
         exitHelper.withdrawBTT(to, tokenWithdraw, tokenExit, actualExit);
 
         emit RelayEnd(_nonce, relayer);
