@@ -13,16 +13,22 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
 
     event RelayStart(uint256 indexed id, address indexed relayer);
     event RelayExit(uint256 indexed id, address indexed relayer, address to,
-        address tokenWithdraw, address tokenExit, uint256 actual, uint256 fee, uint256 refuelFee);
+        address tokenWithdraw, address tokenExit, uint256 actual, uint256 fee, bool withRefuel, uint256 refuelFee);
     event RelayEnd(uint256 indexed id, address indexed relayer);
     event FeeUpdated(address indexed relayer, address indexed tokenExit, uint256 fee);
     event RefuelFeeUpdated(address indexed relayer, address indexed tokenExit, uint256 refuelFee);
     event RelayerUpdated(address indexed relayer, bool state);
+    event StateUpdated(address indexed relayer, address indexed tokenExit, bool state);
+    event RefuelStateUpdated(address indexed relayer, address indexed tokenExit, bool state);
 
     uint256 public nonce;
     IChildERC20Exit public exitHelper;
     mapping(address => mapping(IChildToken => uint256)) public relayerTokenFees;
+    mapping(address => mapping(IChildToken => bool)) public relayerTokenStates;
+
     mapping(address => mapping(IChildToken => uint256)) public relayerTokenRefuelFees;
+    mapping(address => mapping(IChildToken => bool)) public relayerTokenRefuelStates;
+
     mapping(address => bool) public relayerStates;
     mapping(IChildToken => bool) public approved;
 
@@ -50,6 +56,26 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
         emit RelayerUpdated(relayer, state);
     }
 
+    function setRelayerTokenStates(address relayer, IChildToken childToken, bool state) external {
+        require(relayerStates[relayer], "ChildERC20Relay: relayer is not active");
+        if (!hasRole(MANAGER_ROLE, msgSender())) {
+            require(relayer == msgSender(), "ChildERC20Relay: INSUFFICIENT_PERMISSIONS");
+        }
+
+        relayerTokenStates[relayer][childToken] = state;
+        emit StateUpdated(relayer, address(childToken), state);
+    }
+
+    function setRelayerTokenRefuelStates(address relayer, IChildToken childToken, bool state) external {
+        require(relayerStates[relayer], "ChildERC20Relay: relayer is not active");
+        if (!hasRole(MANAGER_ROLE, msgSender())) {
+            require(relayer == msgSender(), "ChildERC20Relay: INSUFFICIENT_PERMISSIONS");
+        }
+
+        relayerTokenRefuelStates[relayer][childToken] = state;
+        emit RefuelStateUpdated(relayer, address(childToken), state);
+    }
+
     function setRelayerTokenFees(address relayer, IChildToken childToken, uint256 fee) external {
         require(relayerStates[relayer], "ChildERC20Relay: relayer is not active");
         if (!hasRole(MANAGER_ROLE, msgSender())) {
@@ -74,15 +100,14 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
         amount, address relayer, bool withRefuel)
     external {
         require(relayerStates[relayer], "ChildERC20Relay: relayer is not active");
-
-        uint256 fee = relayerTokenFees[relayer][tokenExit];
-        require(fee > 0, "ChildERC20Relay: unsupported relayer and exitToken");
+        require(relayerTokenStates[relayer][tokenExit], "ChildERC20Relay: unsupported relayer and exitToken");
 
         uint256 refuelFee = 0;
         if (withRefuel) {
+            require(relayerTokenRefuelStates[relayer][tokenExit], "ChildERC20Relay: unsupported relayer and exitToken for refuel");
             refuelFee = relayerTokenRefuelFees[relayer][tokenExit];
-            require(refuelFee > 0, "ChildERC20Relay: unsupported relayer and exitToken for refuel");
         }
+        uint256 fee = relayerTokenFees[relayer][tokenExit];
 
         require(amount > fee + refuelFee, "ChildERC20Relay: amount must be larger than fee");
         uint256 actualExit = amount - fee - refuelFee;
@@ -99,7 +124,7 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
             approved[tokenWithdraw] = true;
         }
 
-        emit RelayExit(_nonce, relayer, to, address(tokenWithdraw), address(tokenExit), actualExit, fee, refuelFee);
+        emit RelayExit(_nonce, relayer, to, address(tokenWithdraw), address(tokenExit), actualExit, fee, withRefuel, refuelFee);
         exitHelper.withdrawTo(to, tokenWithdraw, tokenExit, actualExit);
 
         emit RelayEnd(_nonce, relayer);
@@ -109,15 +134,14 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
         amount, address payable relayer, bool withRefuel)
     payable external {
         require(relayerStates[relayer], "ChildERC20Relay: relayer is not active");
-
-        uint256 fee = relayerTokenFees[relayer][tokenExit];
-        require(fee > 0, "ChildERC20Relay: unsupported relayer and exitToken");
+        require(relayerTokenStates[relayer][tokenExit], "ChildERC20Relay: unsupported relayer and exitToken");
 
         uint256 refuelFee = 0;
         if (withRefuel) {
+            require(relayerTokenRefuelStates[relayer][tokenExit], "ChildERC20Relay: unsupported relayer and exitToken for refuel");
             refuelFee = relayerTokenRefuelFees[relayer][tokenExit];
-            require(refuelFee > 0, "ChildERC20Relay: unsupported relayer and exitToken for refuel");
         }
+        uint256 fee = relayerTokenFees[relayer][tokenExit];
 
         require(amount > fee + refuelFee, "ChildERC20Relay: amount must be larger than fee");
         uint256 actualExit = amount - fee - refuelFee;
@@ -130,7 +154,7 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
             require(msg.value >= amount, "msg value can't be less than amount");
             relayer.transfer(fee + refuelFee);
 
-            emit RelayExit(_nonce, relayer, to, address(tokenWithdraw), address(tokenExit), actualExit, fee, refuelFee);
+            emit RelayExit(_nonce, relayer, to, address(tokenWithdraw), address(tokenExit), actualExit, fee, withRefuel, refuelFee);
             exitHelper.withdrawBTT{value:actualExit}(to, tokenWithdraw, tokenExit, actualExit);
 
             emit RelayEnd(_nonce, relayer);
@@ -149,7 +173,7 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
             approved[tokenWithdraw] = true;
         }
 
-        emit RelayExit(_nonce, relayer, to, address(tokenWithdraw), address(tokenExit), actualExit, fee, refuelFee);
+        emit RelayExit(_nonce, relayer, to, address(tokenWithdraw), address(tokenExit), actualExit, fee, withRefuel, refuelFee);
         exitHelper.withdrawBTT(to, tokenWithdraw, tokenExit, actualExit);
 
         emit RelayEnd(_nonce, relayer);
