@@ -1,4 +1,5 @@
 pragma solidity 0.6.6;
+pragma experimental ABIEncoderV2;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
@@ -8,7 +9,16 @@ import {ContextMixin} from "../../../common/ContextMixin.sol";
 import {IChildToken} from "./IChildToken.sol";
 import {IChildERC20Exit} from "./IChildERC20Exit.sol";
 
-contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMixin {
+
+interface IChildChainManager {
+    function childToRootToken(address childToken) external returns (address);
+}
+
+interface IChildERC20RelayStake {
+    function isActive(address relayer) external view returns(bool);
+}
+
+contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMixin{
     using SafeERC20 for IERC20;
 
     event RelayStart(uint256 indexed id, address indexed relayer);
@@ -16,98 +26,106 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
         address tokenWithdraw, address tokenExit, uint256 actual, uint256 fee, bool withRefuel, uint256 refuelFee);
     event RelayEnd(uint256 indexed id, address indexed relayer);
     event FeeUpdated(address indexed relayer, address indexed tokenExit, uint256 fee);
-    event RefuelFeeUpdated(address indexed relayer, address indexed tokenExit, uint256 refuelFee);
-    event RelayerUpdated(address indexed relayer, bool state);
+    event RefuelFeeUpdated(address indexed tokenExit, uint256 refuelFee);
     event StateUpdated(address indexed relayer, address indexed tokenExit, bool state);
-    event RefuelStateUpdated(address indexed relayer, address indexed tokenExit, bool state);
+    event RefuelStateUpdated(address indexed tokenExit, bool state);
+    event RefuelStateUpdated(address indexed tokenExit, uint256 refuelFee);
+    event PauseAction(address indexed relayer, bool isRelayerPaused);
+    event MaxHourlyOrdersUpdated(uint256 value);
 
     uint256 public nonce;
+    uint256 public maxHourlyOrders;
+    
+    IChildChainManager public childChainManager;
+    IChildERC20RelayStake public childERC20RelayStake;
     IChildERC20Exit public exitHelper;
+    
+    mapping(IChildToken => bool) public approved;
     mapping(address => mapping(IChildToken => uint256)) public relayerTokenFees;
     mapping(address => mapping(IChildToken => bool)) public relayerTokenStates;
+    mapping(address => bool) public isRelayerPaused;
+    mapping(IChildToken => uint256) public tokenRefuelFees;
+    mapping(IChildToken => bool) public tokenRefuelStates;
 
-    mapping(address => mapping(IChildToken => uint256)) public relayerTokenRefuelFees;
-    mapping(address => mapping(IChildToken => bool)) public relayerTokenRefuelStates;
+    struct HourlyCount{
+        uint64 hour;
+        uint64 count;
+    }
+    mapping(address => HourlyCount) public currentHourlyCount;
 
-    mapping(address => bool) public relayerStates;
-    mapping(IChildToken => bool) public approved;
+    bytes32 public constant REFUELER_ROLE = keccak256("REFUELER_ROLE");
 
-    bytes32 public constant MANAGER_ROLE = keccak256("MANAGER_ROLE");
-
-    constructor(
+    function initialize(
         address _admin,
-        address _manager,
-        address _exitHelper
-    ) public {
+        address _refueler,
+        address _exitHelper,
+        address _childChainManager,
+        address _childERC20RelayStake,
+        uint256 _maxHourlyOrders) external initializer {
         _setupContractId("ChildERC20Relay");
         _setupRole(DEFAULT_ADMIN_ROLE, _admin);
-        _setupRole(MANAGER_ROLE, _manager);
+        _setupRole(REFUELER_ROLE, _refueler);
         exitHelper = IChildERC20Exit(_exitHelper);
+        childChainManager = IChildChainManager(_childChainManager);
+        childERC20RelayStake = IChildERC20RelayStake(_childERC20RelayStake);
+        maxHourlyOrders = _maxHourlyOrders;
         _initializeEIP712("ChildERC20Relay");
     }
 
-    function setRelayerStates(address relayer, bool state) external {
-        require(relayer != address(0x00), "ChildERC20Relay: relayer should not be zero address");
-        if (!hasRole(MANAGER_ROLE, msgSender())) {
-            require(relayer == msgSender() && state == false, "ChildERC20Relay: INSUFFICIENT_PERMISSIONS");
-        }
-
-        relayerStates[relayer] = state;
-        emit RelayerUpdated(relayer, state);
+    modifier onlyActive(address relayer){
+        require(childERC20RelayStake.isActive(relayer), "ChildERC20Relay: relayer is not active");
+        _;
     }
 
-    function setRelayerTokenStates(address relayer, IChildToken childToken, bool state) external {
-        require(relayerStates[relayer], "ChildERC20Relay: relayer is not active");
-        if (!hasRole(MANAGER_ROLE, msgSender())) {
-            require(relayer == msgSender(), "ChildERC20Relay: INSUFFICIENT_PERMISSIONS");
-        }
+    function setRelayerPause(bool state) external onlyActive(msgSender()){
+        address relayer = msgSender();
+         isRelayerPaused[relayer] = state;
+        emit PauseAction(relayer, state);
+    }
 
+    function setRelayerTokenStates(IChildToken childToken, bool state) external onlyActive(msgSender()){
+        address relayer= msgSender();
+        if(state){
+            require(childChainManager.childToRootToken(address(childToken))!= address(0),"ChildERC20Relay: TOKEN_NOT_MAPPED");
+        }
         relayerTokenStates[relayer][childToken] = state;
         emit StateUpdated(relayer, address(childToken), state);
     }
 
-    function setRelayerTokenRefuelStates(address relayer, IChildToken childToken, bool state) external {
-        require(relayerStates[relayer], "ChildERC20Relay: relayer is not active");
-        if (!hasRole(MANAGER_ROLE, msgSender())) {
-            require(relayer == msgSender(), "ChildERC20Relay: INSUFFICIENT_PERMISSIONS");
-        }
-
-        relayerTokenRefuelStates[relayer][childToken] = state;
-        emit RefuelStateUpdated(relayer, address(childToken), state);
-    }
-
-    function setRelayerTokenFees(address relayer, IChildToken childToken, uint256 fee) external {
-        require(relayerStates[relayer], "ChildERC20Relay: relayer is not active");
-        if (!hasRole(MANAGER_ROLE, msgSender())) {
-            require(relayer == msgSender(), "ChildERC20Relay: INSUFFICIENT_PERMISSIONS");
-        }
-
+    function setRelayerTokenFees(IChildToken childToken, uint256 fee) external onlyActive(msgSender()){
+        address relayer = msgSender();
         relayerTokenFees[relayer][childToken] = fee;
         emit FeeUpdated(relayer, address(childToken), fee);
     }
 
-    function setRelayerTokenRefuelFees(address relayer, IChildToken childToken, uint256 refuelFee) external {
-        require(relayerStates[relayer], "ChildERC20Relay: relayer is not active");
-        if (!hasRole(MANAGER_ROLE, msgSender())) {
-            require(relayer == msgSender(), "ChildERC20Relay: INSUFFICIENT_PERMISSIONS");
+    function setTokenRefuelStates( IChildToken childToken, bool state) external only(REFUELER_ROLE){
+        if(state){
+            require(childChainManager.childToRootToken(address(childToken))!= address(0),"ChildERC20Relay: TOKEN_NOT_MAPPED");
         }
-
-        relayerTokenRefuelFees[relayer][childToken] = refuelFee;
-        emit RefuelFeeUpdated(relayer, address(childToken), refuelFee);
+        tokenRefuelStates[childToken] = state;
+        emit RefuelStateUpdated(address(childToken), state);
     }
 
+    function setTokenRefuelFees( IChildToken childToken, uint256 refuelFee) external only(REFUELER_ROLE){
+        tokenRefuelFees[childToken] = refuelFee;
+        emit RefuelFeeUpdated(address(childToken), refuelFee);
+    }
+    
     function withdrawToByRelayer(address to, IChildToken tokenWithdraw, IChildToken tokenExit, uint256
-        amount, address relayer, bool withRefuel)
-    external {
-        require(relayerStates[relayer], "ChildERC20Relay: relayer is not active");
+        amount, address relayer, bool withRefuel,uint256 expectedRefuelFee,uint256 expectedRelayerFee)
+    external onlyActive(relayer){
         require(relayerTokenStates[relayer][tokenExit], "ChildERC20Relay: unsupported relayer and exitToken");
+
+        _updateHourlyCount(relayer);
 
         uint256 refuelFee = 0;
         if (withRefuel) {
-            require(relayerTokenRefuelStates[relayer][tokenExit], "ChildERC20Relay: unsupported relayer and exitToken for refuel");
-            refuelFee = relayerTokenRefuelFees[relayer][tokenExit];
+            require(tokenRefuelStates[tokenExit], "ChildERC20Relay: unsupported exitToken for refuel");
+            refuelFee = tokenRefuelFees[tokenExit];
+            require(refuelFee == expectedRefuelFee, "ChildERC20Relay: Mismatch refuelFee");
         }
         uint256 fee = relayerTokenFees[relayer][tokenExit];
+        require(fee == expectedRelayerFee, "ChildERC20Relay: Mismatch fee");
 
         require(amount > fee + refuelFee, "ChildERC20Relay: amount must be larger than fee");
         uint256 actualExit = amount - fee - refuelFee;
@@ -131,17 +149,21 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
     }
 
     function withdrawBTTByRelayer(address to, IChildToken tokenWithdraw, IChildToken tokenExit, uint256
-        amount, address payable relayer, bool withRefuel)
-    payable external {
-        require(relayerStates[relayer], "ChildERC20Relay: relayer is not active");
+        amount, address payable relayer, bool withRefuel,uint256 expectedRefuelFee,uint256 expectedRelayerFee)
+    payable external  onlyActive(relayer){
+
         require(relayerTokenStates[relayer][tokenExit], "ChildERC20Relay: unsupported relayer and exitToken");
+
+        _updateHourlyCount(relayer);
 
         uint256 refuelFee = 0;
         if (withRefuel) {
-            require(relayerTokenRefuelStates[relayer][tokenExit], "ChildERC20Relay: unsupported relayer and exitToken for refuel");
-            refuelFee = relayerTokenRefuelFees[relayer][tokenExit];
+            require(tokenRefuelStates[tokenExit], "ChildERC20Relay: unsupported relayer and exitToken for refuel");
+            refuelFee = tokenRefuelFees[tokenExit];
+            require(refuelFee == expectedRefuelFee, "ChildERC20Relay: Mismatch refuelFee");
         }
         uint256 fee = relayerTokenFees[relayer][tokenExit];
+        require(fee == expectedRelayerFee, "ChildERC20Relay: Mismatch fee");
 
         require(amount > fee + refuelFee, "ChildERC20Relay: amount must be larger than fee");
         uint256 actualExit = amount - fee - refuelFee;
@@ -178,4 +200,44 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
 
         emit RelayEnd(_nonce, relayer);
     }
+
+    function _updateHourlyCount(address relayer) internal{
+        uint8 currentHour = uint8(block.timestamp / 3600);
+        HourlyCount storage hc = currentHourlyCount[relayer];
+
+        if(hc.hour == currentHour){
+            require(hc.count < maxHourlyOrders,"ChildERC20Relay: exceeds max hourly count");
+            hc.count += 1;
+        }else{
+            hc.hour = currentHour;
+            hc.count = 1;
+        }
+    }
+
+    function setMaxHourlyOrders(uint256 maxNew) external only(DEFAULT_ADMIN_ROLE){
+        require(maxNew > 0, "ChildERC20Relay: need non-zero value");
+        maxHourlyOrders = maxNew;
+        emit MaxHourlyOrdersUpdated(maxNew);
+    }
+
+    function setRefueler(address addr) external only(DEFAULT_ADMIN_ROLE) {
+        for (int i = 0; i < 255; i++) {
+            if (getRoleMemberCount(REFUELER_ROLE) >= 1) {
+                revokeRole(REFUELER_ROLE, getRoleMember(REFUELER_ROLE, 0));
+            } else {
+                break;
+            }
+        }
+        _setupRole(REFUELER_ROLE, addr);
+    }
+
+    function getCurrentHourlyCount(address relayer) view public returns(uint64){
+        uint8 currentHour = uint8(block.timestamp / 3600);
+        HourlyCount memory hc = currentHourlyCount[relayer];
+        if(hc.hour == currentHour){
+            return hc.count;
+        }else{
+            return 0;
+        }
+    }  
 }
