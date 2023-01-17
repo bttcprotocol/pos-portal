@@ -3,7 +3,6 @@ pragma experimental ABIEncoderV2;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
-// import {EnumerableSet} from "@openzeppelin/contracts/utils/EnumerableSet.sol";
 import {EnumerableSet} from "../../../common/EnumerableSet.sol";
 import {AccessControlMixin} from "../../../common/AccessControlMixin.sol";
 import {ContextMixin} from "../../../common/ContextMixin.sol";
