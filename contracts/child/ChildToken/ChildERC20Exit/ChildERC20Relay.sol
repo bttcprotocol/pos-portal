@@ -16,6 +16,7 @@ interface IChildChainManager {
 
 interface IChildERC20RelayStake {
     function isActive(address relayer) external view returns(bool);
+    function isOrderTaking(address relayer) external view returns(bool);
 }
 
 contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMixin{
@@ -76,6 +77,11 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
         _;
     }
 
+    modifier onlyCanOrderTaking(address relayer){
+        require(childERC20RelayStake.isOrderTaking(relayer), "ChildERC20Relay: relayer is not active");
+        _;
+    }
+
     function setRelayerPause(bool state) external onlyActive(msgSender()){
         address relayer = msgSender();
          isRelayerPaused[relayer] = state;
@@ -112,7 +118,7 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
     
     function withdrawToByRelayer(address to, IChildToken tokenWithdraw, IChildToken tokenExit, uint256
         amount, address relayer, bool withRefuel,uint256 expectedRefuelFee,uint256 expectedRelayerFee)
-    external onlyActive(relayer){
+    external onlyCanOrderTaking(relayer){
         require(relayerTokenStates[relayer][tokenExit], "ChildERC20Relay: unsupported relayer and exitToken");
 
         _updateHourlyCount(relayer);
@@ -154,7 +160,7 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
 
     function withdrawBTTByRelayer(address to, IChildToken tokenWithdraw, IChildToken tokenExit, uint256
         amount, address payable relayer, bool withRefuel,uint256 expectedRefuelFee,uint256 expectedRelayerFee)
-    payable external  onlyActive(relayer){
+    payable external  onlyCanOrderTaking(relayer){
 
         require(relayerTokenStates[relayer][tokenExit], "ChildERC20Relay: unsupported relayer and exitToken");
 
@@ -216,7 +222,7 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
     }
 
     function _updateHourlyCount(address relayer) internal{
-        uint8 currentHour = uint8(block.timestamp / 3600);
+        uint64 currentHour = uint64(block.timestamp / 3600);
         HourlyCount storage hc = currentHourlyCount[relayer];
 
         if(hc.hour == currentHour){
@@ -234,19 +240,8 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
         emit MaxHourlyOrdersUpdated(maxNew);
     }
 
-    function setRefueler(address addr) external only(DEFAULT_ADMIN_ROLE) {
-        for (int i = 0; i < 255; i++) {
-            if (getRoleMemberCount(REFUELER_ROLE) >= 1) {
-                revokeRole(REFUELER_ROLE, getRoleMember(REFUELER_ROLE, 0));
-            } else {
-                break;
-            }
-        }
-        _setupRole(REFUELER_ROLE, addr);
-    }
-
     function getCurrentHourlyCount(address relayer) view public returns(uint64){
-        uint8 currentHour = uint8(block.timestamp / 3600);
+        uint64 currentHour = uint64(block.timestamp / 3600);
         HourlyCount memory hc = currentHourlyCount[relayer];
         if(hc.hour == currentHour){
             return hc.count;

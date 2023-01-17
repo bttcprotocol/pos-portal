@@ -177,19 +177,14 @@ contract ChildERC20RelayStake is AccessControlMixin, ContextMixin, Initializable
         emit ReceiverUpdated(receiverNew);
     }
 
-    function setRole(bytes32 role, address addr) external only(DEFAULT_ADMIN_ROLE){
-        require(role == OPERATOR_ROLE || role == COMMUNITY_ROLE, "ChildERC20RelayStake: incorrect role");
-        for (int i = 0; i < 255; i++) {
-            if (getRoleMemberCount(role) >= 1) {
-                revokeRole(role, getRoleMember(role, 0));
-            } else {
-                break;
-            }
+    function isActive(address relayer) external view returns(bool){
+        if(relayerBasic[relayer].status == Status.activated){
+            return true;
         }
-        _setupRole(role, addr);
+        return false;
     }
 
-    function isActive(address relayer) external view returns(bool){
+    function isOrderTaking(address relayer) external view returns(bool){
         if(relayerBasic[relayer].status == Status.activated && relayerBasic[relayer].stakeAmount >= minStakeAmount){
             return true;
         }
