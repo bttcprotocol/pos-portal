@@ -135,7 +135,12 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
         emit RelayStart(_nonce, relayer);
 
         IERC20(tokenWithdraw).safeTransferFrom(msgSender(), address(this), amount);
-        IERC20(tokenWithdraw).transfer(relayer, fee + refuelFee);
+        if(fee > 0){
+            IERC20(tokenWithdraw).transfer(relayer, fee);
+        }
+        if(refuelFee > 0){
+            IERC20(tokenWithdraw).transfer(getRoleMember(REFUELER_ROLE, 0), refuelFee);
+        }
 
         if (!approved[tokenWithdraw]) {
             IERC20(tokenWithdraw).approve(address(exitHelper), uint256(-1));
@@ -173,8 +178,13 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
         emit RelayStart(_nonce, relayer);
 
         if (address(tokenWithdraw) == address(0x1010)) {
-            require(msg.value >= amount, "msg value can't be less than amount");
-            relayer.transfer(fee + refuelFee);
+            require(msg.value >= amount, "ChildERC20Relay: msg value can't be less than amount");
+            if(fee > 0){
+                relayer.transfer(fee);
+            }
+            if(refuelFee > 0){
+                payable(getRoleMember(REFUELER_ROLE, 0)).transfer(refuelFee);
+            }
 
             emit RelayExit(_nonce, relayer, to, address(tokenWithdraw), address(tokenExit), actualExit, fee, withRefuel, refuelFee);
             exitHelper.withdrawBTT{value:actualExit}(to, tokenWithdraw, tokenExit, actualExit);
@@ -188,8 +198,13 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
         }
 
         IERC20(tokenWithdraw).safeTransferFrom(msgSender(), address(this), amount);
-        IERC20(tokenWithdraw).transfer(relayer, fee + refuelFee);
 
+        if(fee > 0){
+            IERC20(tokenWithdraw).transfer(relayer, fee);
+        }
+        if(refuelFee > 0){
+            IERC20(tokenWithdraw).transfer(getRoleMember(REFUELER_ROLE, 0), refuelFee);
+        }
         if (!approved[tokenWithdraw]) {
             IERC20(tokenWithdraw).approve(address(exitHelper), uint256(-1));
             approved[tokenWithdraw] = true;
