@@ -3,7 +3,8 @@ pragma experimental ABIEncoderV2;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
-import {EnumerableSet} from "@openzeppelin/contracts/utils/EnumerableSet.sol";
+// import {EnumerableSet} from "@openzeppelin/contracts/utils/EnumerableSet.sol";
+import {EnumerableSet} from "../../../common/EnumerableSet.sol";
 import {AccessControlMixin} from "../../../common/AccessControlMixin.sol";
 import {ContextMixin} from "../../../common/ContextMixin.sol";
 import {Initializable} from "../../../common/Initializable.sol";
@@ -198,6 +199,10 @@ contract ChildERC20RelayStake is AccessControlMixin, ContextMixin, Initializable
 
     function getRelayerStakeAmount(address relayer) external view returns(uint256){
         return relayerBasic[relayer].stakeAmount;
+    }
+
+    function getRelayers() public view returns (address[] memory){
+        return relayers.values();
     }
 
 }
