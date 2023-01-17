@@ -29,7 +29,6 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
     event RefuelFeeUpdated(address indexed tokenExit, uint256 refuelFee);
     event StateUpdated(address indexed relayer, address indexed tokenExit, bool state);
     event RefuelStateUpdated(address indexed tokenExit, bool state);
-    event RefuelStateUpdated(address indexed tokenExit, uint256 refuelFee);
     event PauseAction(address indexed relayer, bool isRelayerPaused);
     event MaxHourlyOrdersUpdated(uint256 value);
 
