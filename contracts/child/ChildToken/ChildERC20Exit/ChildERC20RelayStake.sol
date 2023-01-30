@@ -145,8 +145,8 @@ contract ChildERC20RelayStake is AccessControlMixin, ContextMixin, Initializable
 
     function activateRelayer(address relayer) external only(COMMUNITY_ROLE){
         require(relayer != address(0x00), "ChildERC20RelayStake: relayer should not be zero address");
-        require(relayerBasic[relayer].status == Status.staked);
-        require(relayerBasic[relayer].stakeAmount >= minStakeAmount);
+        require(relayerBasic[relayer].status == Status.staked, "ChildERC20RelayStake: incorrect status");
+        require(relayerBasic[relayer].stakeAmount >= minStakeAmount, "ChildERC20RelayStake: less than limit minStakeAmount");
         
         relayers.add(relayer);
         relayerBasic[relayer].status = Status.activated;

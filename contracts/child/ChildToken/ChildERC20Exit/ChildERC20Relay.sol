@@ -78,13 +78,13 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
     }
 
     modifier onlyCanOrderTaking(address relayer){
-        require(childERC20RelayStake.isOrderTaking(relayer), "ChildERC20Relay: relayer is not active");
+        require(childERC20RelayStake.isOrderTaking(relayer) && !isRelayerPaused[relayer], "ChildERC20Relay: relayer is not active");
         _;
     }
 
     function setRelayerPause(bool state) external onlyActive(msgSender()){
         address relayer = msgSender();
-         isRelayerPaused[relayer] = state;
+        isRelayerPaused[relayer] = state;
         emit PauseAction(relayer, state);
     }
 
