@@ -40,6 +40,7 @@ contract ChildERC20RelayStake is AccessControlMixin, ContextMixin, Initializable
     uint256 public withdrawnPenalSum;
     uint256 public timeInterval;
     uint256 public minStakeAmount;
+    uint256 public minActiveAmount;
     address public receiver;
 
     event Stake(address indexed from, uint256 amount, uint256 totalStakedAmount);
@@ -47,6 +48,7 @@ contract ChildERC20RelayStake is AccessControlMixin, ContextMixin, Initializable
     event ActivateRelayer(address indexed relayer);
     event WithdrawCollateral(address indexed relayer, uint256 amount);
     event MinStakeAmountUpdated(uint256 value);
+    event MinActiveAmountUpdated(uint256 value);
     event TimeIntervalUpdated(uint256 value);
     event RelayerTimeIntervalUpdated(address relayer,uint256 interval);
     event ReceiverUpdated(address receiver);
@@ -62,6 +64,7 @@ contract ChildERC20RelayStake is AccessControlMixin, ContextMixin, Initializable
         address _usdd_b,
         address _receiver,
         uint256 _minStakeAmount,
+        uint256 _minActiveAmount,
         uint256 _timeInterval) external initializer {
         _setupContractId("ChildERC20RelayStake");
         _setupRole(DEFAULT_ADMIN_ROLE, _admin);
@@ -72,6 +75,7 @@ contract ChildERC20RelayStake is AccessControlMixin, ContextMixin, Initializable
         usdd_e = IERC20(_usdd_e);
         receiver = _receiver;
         minStakeAmount = _minStakeAmount;
+        minActiveAmount = _minActiveAmount;
         timeInterval = _timeInterval;
     }
 
@@ -146,7 +150,7 @@ contract ChildERC20RelayStake is AccessControlMixin, ContextMixin, Initializable
     function activateRelayer(address relayer) external only(COMMUNITY_ROLE){
         require(relayer != address(0x00), "ChildERC20RelayStake: relayer should not be zero address");
         require(relayerBasic[relayer].status == Status.staked, "ChildERC20RelayStake: incorrect status");
-        require(relayerBasic[relayer].stakeAmount >= minStakeAmount, "ChildERC20RelayStake: less than limit minStakeAmount");
+        require(relayerBasic[relayer].stakeAmount >= minActiveAmount, "ChildERC20RelayStake: less than limit minActiveAmount");
         
         relayers.add(relayer);
         relayerBasic[relayer].status = Status.activated;
@@ -163,6 +167,12 @@ contract ChildERC20RelayStake is AccessControlMixin, ContextMixin, Initializable
         require(minStakeAmountNew > 0, "ChildERC20RelayStake: need non-zero value");
         minStakeAmount = minStakeAmountNew;
         emit MinStakeAmountUpdated(minStakeAmountNew);
+    }
+
+    function setMinActiveAmount(uint256 minActiveAmountNew) external only(COMMUNITY_ROLE){
+        require(minActiveAmountNew > 0, "ChildERC20RelayStake: need non-zero value");
+        minActiveAmount = minActiveAmountNew;
+        emit MinActiveAmountUpdated(minActiveAmountNew);
     }
 
     function setRelayertimeInterval(address relayer,uint256 interval) external only(COMMUNITY_ROLE){
