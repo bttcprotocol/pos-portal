@@ -3,6 +3,7 @@ pragma experimental ABIEncoderV2;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
+import {SafeMath} from "@openzeppelin/contracts/math/SafeMath.sol";
 import {AccessControlMixin} from "../../../common/AccessControlMixin.sol";
 import {NativeMetaTransaction} from "../../../common/NativeMetaTransaction.sol";
 import {ContextMixin} from "../../../common/ContextMixin.sol";
@@ -17,10 +18,12 @@ interface IChildChainManager {
 interface IChildERC20RelayStake {
     function isActive(address relayer) external view returns(bool);
     function isOrderTaking(address relayer) external view returns(bool);
+    function getMaxHourlyOrders(address relayer) external view returns(uint256);
 }
 
 contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMixin{
     using SafeERC20 for IERC20;
+    using SafeMath for uint256;
 
     event RelayStart(uint256 indexed id, address indexed relayer);
     event RelayExit(uint256 indexed id, address indexed relayer, address to,
@@ -34,7 +37,6 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
     event MaxHourlyOrdersUpdated(uint256 value);
 
     uint256 public nonce;
-    uint256 public maxHourlyOrders;
     
     IChildChainManager public childChainManager;
     IChildERC20RelayStake public childERC20RelayStake;
@@ -48,8 +50,8 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
     mapping(IChildToken => bool) public tokenRefuelStates;
 
     struct HourlyCount{
-        uint64 hour;
-        uint64 count;
+        uint256 hour;
+        uint256 count;
     }
     mapping(address => HourlyCount) public currentHourlyCount;
 
@@ -60,15 +62,13 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
         address _refueler,
         address _exitHelper,
         address _childChainManager,
-        address _childERC20RelayStake,
-        uint256 _maxHourlyOrders) external initializer {
+        address _childERC20RelayStake) external initializer {
         _setupContractId("ChildERC20Relay");
         _setupRole(DEFAULT_ADMIN_ROLE, _admin);
         _setupRole(REFUELER_ROLE, _refueler);
         exitHelper = IChildERC20Exit(_exitHelper);
         childChainManager = IChildChainManager(_childChainManager);
         childERC20RelayStake = IChildERC20RelayStake(_childERC20RelayStake);
-        maxHourlyOrders = _maxHourlyOrders;
         _initializeEIP712("ChildERC20Relay");
     }
 
@@ -132,8 +132,8 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
         uint256 fee = relayerTokenFees[relayer][tokenExit];
         require(fee == expectedRelayerFee, "ChildERC20Relay: Mismatch fee");
 
-        require(amount > fee + refuelFee, "ChildERC20Relay: amount must be larger than fee");
-        uint256 actualExit = amount - fee - refuelFee;
+        require(amount > fee.add(refuelFee), "ChildERC20Relay: amount must be larger than fee");
+        uint256 actualExit = amount.sub(fee).sub(refuelFee);
 
         uint256 _nonce = nonce + 1;
         nonce = _nonce;
@@ -175,8 +175,8 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
         uint256 fee = relayerTokenFees[relayer][tokenExit];
         require(fee == expectedRelayerFee, "ChildERC20Relay: Mismatch fee");
 
-        require(amount > fee + refuelFee, "ChildERC20Relay: amount must be larger than fee");
-        uint256 actualExit = amount - fee - refuelFee;
+        require(amount > fee.add(refuelFee), "ChildERC20Relay: amount must be larger than fee");
+        uint256 actualExit = amount.sub(fee).sub(refuelFee);
 
         uint256 _nonce = nonce + 1;
         nonce = _nonce;
@@ -197,7 +197,7 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
             emit RelayEnd(_nonce, relayer);
 
             if (msg.value > amount) {
-                msg.sender.transfer(msg.value - amount);
+                msg.sender.transfer(msg.value.sub(amount));
             }
             return;
         }
@@ -222,31 +222,42 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
     }
 
     function _updateHourlyCount(address relayer) internal{
-        uint64 currentHour = uint64(block.timestamp / 3600);
-        HourlyCount storage hc = currentHourlyCount[relayer];
-
-        if(hc.hour == currentHour){
-            require(hc.count < maxHourlyOrders,"ChildERC20Relay: exceeds max hourly count");
-            hc.count += 1;
-        }else{
-            hc.hour = currentHour;
-            hc.count = 1;
-        }
-    }
-
-    function setMaxHourlyOrders(uint256 maxNew) external only(DEFAULT_ADMIN_ROLE){
-        require(maxNew > 0, "ChildERC20Relay: need non-zero value");
-        maxHourlyOrders = maxNew;
-        emit MaxHourlyOrdersUpdated(maxNew);
-    }
-
-    function getCurrentHourlyCount(address relayer) view public returns(uint64){
-        uint64 currentHour = uint64(block.timestamp / 3600);
+        uint256 currentHour = block.timestamp / 3600;
         HourlyCount memory hc = currentHourlyCount[relayer];
-        if(hc.hour == currentHour){
-            return hc.count;
-        }else{
-            return 0;
+        uint256 total = childERC20RelayStake.getMaxHourlyOrders(relayer);
+
+        if(hc.hour != currentHour){
+            hc.count = getNewCount(currentHour,hc.count,hc.hour,total);
+            hc.hour = currentHour;
         }
-    }  
+        require(hc.count < total,"ChildERC20Relay: exceeds max hourly count");
+        hc.count += 1;
+        currentHourlyCount[relayer] = hc;
+    }
+
+    function getCurrentHourlyCount(address relayer) view public returns(uint256 used, uint256 surplus){
+        uint256 currentHour = block.timestamp / 3600;
+        HourlyCount memory hc = currentHourlyCount[relayer];
+        uint256 total = childERC20RelayStake.getMaxHourlyOrders(relayer);     
+        used = getNewCount(currentHour,hc.count,hc.hour,total);
+        surplus = total.sub(used);
+    } 
+
+    function getNewCount(uint256 currentHour, uint256 hcCount, uint256 hcHour, uint256 total) internal pure returns(uint256 newCount){
+        if(hcHour == currentHour){
+            return hcCount;
+        }
+        uint256 intervalhour = currentHour - hcHour; 
+        uint256 temp = (total.mul(30).div(100)) * intervalhour;
+        if(hcCount > temp) {
+            return hcCount - temp;
+        } 
+        return 0;
+    } 
+
+    function replaceRole(address addr) external only(REFUELER_ROLE) {
+        renounceRole(REFUELER_ROLE, msgSender());
+        _setupRole(REFUELER_ROLE, addr);
+    } 
+
 }

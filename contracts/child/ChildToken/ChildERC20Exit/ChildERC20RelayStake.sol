@@ -3,6 +3,7 @@ pragma experimental ABIEncoderV2;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
+import {SafeMath} from "@openzeppelin/contracts/math/SafeMath.sol";
 import {EnumerableSet} from "../../../common/EnumerableSet.sol";
 import {AccessControlMixin} from "../../../common/AccessControlMixin.sol";
 import {ContextMixin} from "../../../common/ContextMixin.sol";
@@ -11,10 +12,12 @@ import {IChildTokenForExchange} from "./IChildTokenForExchange.sol";
 
 contract ChildERC20RelayStake is AccessControlMixin, ContextMixin, Initializable {
     using SafeERC20 for IERC20;
+    using SafeMath for uint256;
     using EnumerableSet for EnumerableSet.AddressSet;
 
     bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE");
     bytes32 public constant COMMUNITY_ROLE = keccak256("COMMUNITY_ROLE");
+    uint256 public constant PRECISION = 100;
 
     IERC20 public usdd_t;
     IERC20 public usdd_e;
@@ -39,18 +42,22 @@ contract ChildERC20RelayStake is AccessControlMixin, ContextMixin, Initializable
     uint256 public penalSum;
     uint256 public withdrawnPenalSum;
     uint256 public timeInterval;
-    uint256 public minStakeAmount;
-    uint256 public minActiveAmount;
     address public receiver;
-
+    uint256 public hardLimit;
+    uint256 public softLimit;
+    uint256 public buffer;
+    uint256 public orderCost;
+    uint256 public scale;
+    
     event Stake(address indexed from, uint256 amount, uint256 totalStakedAmount);
     event UnStake(address indexed relayer, uint256 stakeAmount, uint256 availableTime);
     event ActivateRelayer(address indexed relayer);
     event WithdrawCollateral(address indexed relayer, uint256 amount);
-    event MinStakeAmountUpdated(uint256 value);
-    event MinActiveAmountUpdated(uint256 value);
+    event HardLimitUpdated(uint256 value);
+    event SoftLimitUpdated(uint256 value);
     event TimeIntervalUpdated(uint256 value);
     event RelayerTimeIntervalUpdated(address relayer,uint256 interval);
+    event OrdersParamsUpdated(uint256 buffer,uint256 scale,uint256 orderCost);
     event ReceiverUpdated(address receiver);
     event Punished(address indexed relayer, uint256 amount, uint256 stakeAmount);
     event Retrieved(uint256 amount);
@@ -63,8 +70,6 @@ contract ChildERC20RelayStake is AccessControlMixin, ContextMixin, Initializable
         address _usdd_e,
         address _usdd_b,
         address _receiver,
-        uint256 _minStakeAmount,
-        uint256 _minActiveAmount,
         uint256 _timeInterval) external initializer {
         _setupContractId("ChildERC20RelayStake");
         _setupRole(DEFAULT_ADMIN_ROLE, _admin);
@@ -74,8 +79,6 @@ contract ChildERC20RelayStake is AccessControlMixin, ContextMixin, Initializable
         usdd_b = IERC20(_usdd_b);
         usdd_e = IERC20(_usdd_e);
         receiver = _receiver;
-        minStakeAmount = _minStakeAmount;
-        minActiveAmount = _minActiveAmount;
         timeInterval = _timeInterval;
     }
 
@@ -89,8 +92,8 @@ contract ChildERC20RelayStake is AccessControlMixin, ContextMixin, Initializable
         if(usdd == usdd_e || usdd == usdd_b){
             IChildTokenForExchange(address(usdd)).swapOut(amount);
         }
-        totalStaked += amount;
-        basic.stakeAmount += amount;
+        totalStaked = totalStaked.add(amount);
+        basic.stakeAmount = basic.stakeAmount.add(amount);
         if(basic.status == Status.pending){
             basic.status = Status.staked;
         }
@@ -117,16 +120,16 @@ contract ChildERC20RelayStake is AccessControlMixin, ContextMixin, Initializable
         
         if(basic.status == Status.unstaked){
             if(basic.timeInterval > 0){
-                require(block.timestamp - basic.unstakedTime >= basic.timeInterval,"ChildERC20RelayStake: less than relayer limit timeInterval");
+                require(block.timestamp.sub(basic.unstakedTime) >= basic.timeInterval,"ChildERC20RelayStake: less than relayer limit timeInterval");
             }else{
-                require(block.timestamp - basic.unstakedTime >= timeInterval,"ChildERC20RelayStake: less than limit timeInterval");
+                require(block.timestamp.sub(basic.unstakedTime) >= timeInterval,"ChildERC20RelayStake: less than limit timeInterval");
             }
         }
 
         delete relayerBasic[relayer];
         
         if(basic.stakeAmount > 0){
-            totalStaked -= basic.stakeAmount;
+            totalStaked = totalStaked.sub(basic.stakeAmount);
             IERC20(usdd_t).safeTransfer(relayer,basic.stakeAmount);
         }
         emit WithdrawCollateral(relayer,basic.stakeAmount);
@@ -135,22 +138,23 @@ contract ChildERC20RelayStake is AccessControlMixin, ContextMixin, Initializable
     function punish(address relayer,uint256 amount) external only(OPERATOR_ROLE){
         require(amount <= relayerBasic[relayer].stakeAmount, "ChildERC20RelayStake: exceeds stake amount");
         require(relayerBasic[relayer].status == Status.activated || relayerBasic[relayer].status == Status.unstaked , "ChildERC20RelayStake: incorrect status");
-        relayerBasic[relayer].stakeAmount -= amount;
-        penalSum += amount;
+        relayerBasic[relayer].stakeAmount = relayerBasic[relayer].stakeAmount.sub(amount);
+        penalSum = penalSum.add(amount);
+        totalStaked = totalStaked.sub(amount);
         emit Punished(relayer,amount,relayerBasic[relayer].stakeAmount);
     }
 
     function retrieve(uint256 amount) external only(COMMUNITY_ROLE){
-        require(amount <= (penalSum - withdrawnPenalSum), "ChildERC20RelayStake: exceeds penal sum");
+        require(amount <= (penalSum.sub(withdrawnPenalSum)), "ChildERC20RelayStake: exceeds penal sum");
         IERC20(usdd_t).safeTransfer(receiver, amount);
-        withdrawnPenalSum += amount;
+        withdrawnPenalSum = withdrawnPenalSum.add(amount);
         emit Retrieved(amount);
     }
 
     function activateRelayer(address relayer) external only(COMMUNITY_ROLE){
         require(relayer != address(0x00), "ChildERC20RelayStake: relayer should not be zero address");
         require(relayerBasic[relayer].status == Status.staked, "ChildERC20RelayStake: incorrect status");
-        require(relayerBasic[relayer].stakeAmount >= minActiveAmount, "ChildERC20RelayStake: less than limit minActiveAmount");
+        require(relayerBasic[relayer].stakeAmount >= softLimit, "ChildERC20RelayStake: less than limit softLimit");
         
         relayers.add(relayer);
         relayerBasic[relayer].status = Status.activated;
@@ -163,16 +167,16 @@ contract ChildERC20RelayStake is AccessControlMixin, ContextMixin, Initializable
         emit TimeIntervalUpdated(interval);
     }
 
-    function setMinStakeAmount(uint256 minStakeAmountNew) external only(COMMUNITY_ROLE){
-        require(minStakeAmountNew > 0, "ChildERC20RelayStake: need non-zero value");
-        minStakeAmount = minStakeAmountNew;
-        emit MinStakeAmountUpdated(minStakeAmountNew);
+    function setHardLimit(uint256 hardLimitNew) external only(COMMUNITY_ROLE){
+        require(hardLimitNew >= 0, "ChildERC20RelayStake: need non-zero value");
+        hardLimit = hardLimitNew;
+        emit HardLimitUpdated(hardLimitNew);
     }
 
-    function setMinActiveAmount(uint256 minActiveAmountNew) external only(COMMUNITY_ROLE){
-        require(minActiveAmountNew > 0, "ChildERC20RelayStake: need non-zero value");
-        minActiveAmount = minActiveAmountNew;
-        emit MinActiveAmountUpdated(minActiveAmountNew);
+    function setSoftLimit(uint256 softLimitNew) external only(COMMUNITY_ROLE){
+        require(softLimitNew >= 0, "ChildERC20RelayStake: need non-zero value");
+        softLimit = softLimitNew;
+        emit SoftLimitUpdated(softLimitNew);
     }
 
     function setRelayertimeInterval(address relayer,uint256 interval) external only(COMMUNITY_ROLE){
@@ -187,6 +191,30 @@ contract ChildERC20RelayStake is AccessControlMixin, ContextMixin, Initializable
         emit ReceiverUpdated(receiverNew);
     }
 
+    function setOrdersParams(uint256 bufferNew, uint256 scaleNew, uint256 orderCostNew) external only(OPERATOR_ROLE){
+        require(bufferNew > 0 && scaleNew > 0 && orderCostNew > 0, "ChildERC20RelayStake: need non-zero value");
+        buffer = bufferNew;
+        scale = scaleNew;
+        orderCost = orderCostNew;
+        emit OrdersParamsUpdated(buffer,scale,orderCost);
+    }
+
+    function replaceRole(bytes32 role, address addr) external only(role){
+        require(role == OPERATOR_ROLE || role == COMMUNITY_ROLE, "ChildERC20RelayStake: incorrect role");
+        renounceRole(role, msgSender());
+        _setupRole(role, addr);
+    }
+
+    function getMaxHourlyOrders(address relayer) view external returns(uint256){
+        uint256 stakeAmount = relayerBasic[relayer].stakeAmount;
+        uint256 bufferAmount = hardLimit.mul(buffer).div(PRECISION);
+
+        if(stakeAmount >= bufferAmount){
+            return stakeAmount.sub(bufferAmount).mul(PRECISION).div(scale).div(orderCost);
+        }
+        return 0;  
+    }
+
     function isActive(address relayer) external view returns(bool){
         if(relayerBasic[relayer].status == Status.activated){
             return true;
@@ -195,7 +223,7 @@ contract ChildERC20RelayStake is AccessControlMixin, ContextMixin, Initializable
     }
 
     function isOrderTaking(address relayer) external view returns(bool){
-        if(relayerBasic[relayer].status == Status.activated && relayerBasic[relayer].stakeAmount >= minStakeAmount){
+        if(relayerBasic[relayer].status == Status.activated && relayerBasic[relayer].stakeAmount >= hardLimit){
             return true;
         }
         return false;
