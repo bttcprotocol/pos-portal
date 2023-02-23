@@ -192,7 +192,7 @@ contract ChildERC20RelayStake is AccessControlMixin, ContextMixin, Initializable
     }
 
     function setOrdersParams(uint256 bufferNew, uint256 scaleNew, uint256 orderCostNew) external only(OPERATOR_ROLE){
-        require(bufferNew > 0 && scaleNew > 0 && orderCostNew > 0, "ChildERC20RelayStake: need non-zero value");
+        require(scaleNew > 0 && orderCostNew > 0, "ChildERC20RelayStake: need non-zero value");
         buffer = bufferNew;
         scale = scaleNew;
         orderCost = orderCostNew;
@@ -200,6 +200,7 @@ contract ChildERC20RelayStake is AccessControlMixin, ContextMixin, Initializable
     }
 
     function replaceRole(bytes32 role, address addr) external only(role){
+        require(addr != address(0x00), "ChildERC20RelayStake: role should not be zero address");
         require(role == OPERATOR_ROLE || role == COMMUNITY_ROLE, "ChildERC20RelayStake: incorrect role");
         renounceRole(role, msgSender());
         _setupRole(role, addr);

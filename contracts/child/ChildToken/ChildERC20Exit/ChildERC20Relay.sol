@@ -240,7 +240,11 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
         HourlyCount memory hc = currentHourlyCount[relayer];
         uint256 total = childERC20RelayStake.getMaxHourlyOrders(relayer);     
         used = getNewCount(currentHour,hc.count,hc.hour,total);
-        surplus = total.sub(used);
+        if(total < used){
+            surplus = 0;
+        }else{
+            surplus = total - used;
+        }
     } 
 
     function getNewCount(uint256 currentHour, uint256 hcCount, uint256 hcHour, uint256 total) internal pure returns(uint256 newCount){
@@ -256,6 +260,7 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
     } 
 
     function replaceRole(address addr) external only(REFUELER_ROLE) {
+        require(addr != address(0x00), "ChildERC20Relay: role should not be zero address");
         renounceRole(REFUELER_ROLE, msgSender());
         _setupRole(REFUELER_ROLE, addr);
     } 
