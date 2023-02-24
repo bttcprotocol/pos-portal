@@ -102,12 +102,10 @@ contract ChildERC20RelayStake is AccessControlMixin, ContextMixin, Initializable
 
     function unstake() external {
         address relayer = msgSender();
-        require(relayerBasic[relayer].status == Status.activated, "ChildERC20RelayStake: incorrect status");
-        require(relayerBasic[relayer].stakeAmount > 0, "ChildERC20RelayStake: Nothing is staked");
 
+        require(relayerBasic[relayer].status == Status.activated, "ChildERC20RelayStake: incorrect status");
         relayerBasic[relayer].status = Status.unstaked;
         relayerBasic[relayer].unstakedTime = block.timestamp;
-
         relayers.remove(relayer);
         emit UnStake(relayer,relayerBasic[relayer].stakeAmount,block.timestamp + timeInterval);
     }

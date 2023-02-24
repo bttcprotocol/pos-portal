@@ -235,15 +235,15 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
         currentHourlyCount[relayer] = hc;
     }
 
-    function getCurrentHourlyCount(address relayer) view public returns(uint256 used, uint256 surplus){
+    function getCurrentHourlyCount(address relayer) view public returns(uint256 virtualUsed, uint256 surplus){
         uint256 currentHour = block.timestamp / 3600;
         HourlyCount memory hc = currentHourlyCount[relayer];
         uint256 total = childERC20RelayStake.getMaxHourlyOrders(relayer);     
-        used = getNewCount(currentHour,hc.count,hc.hour,total);
-        if(total < used){
+        virtualUsed = getNewCount(currentHour,hc.count,hc.hour,total);
+        if(total < virtualUsed){
             surplus = 0;
         }else{
-            surplus = total - used;
+            surplus = total - virtualUsed;
         }
     } 
 
@@ -252,7 +252,8 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
             return hcCount;
         }
         uint256 intervalhour = currentHour - hcHour; 
-        uint256 temp = (total.mul(30).div(100)) * intervalhour;
+        uint256 temp = total.mul(intervalhour).mul(30).div(100);
+
         if(hcCount > temp) {
             return hcCount - temp;
         } 
