@@ -32,11 +32,13 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
     event FeeUpdated(address indexed relayer, address indexed tokenExit, uint256 fee);
     event RefuelFeeUpdated(address indexed tokenExit, uint256 refuelFee);
     event StateUpdated(address indexed relayer, address indexed tokenExit, bool state);
+    event ReceiverUpdated(address receiver);
     event RefuelStateUpdated(address indexed tokenExit, bool state);
     event PauseAction(address indexed relayer, bool isRelayerPaused);
     event MaxHourlyOrdersUpdated(uint256 value);
 
     uint256 public nonce;
+    address public receiver;
     
     IChildChainManager public childChainManager;
     IChildERC20RelayStake public childERC20RelayStake;
@@ -60,12 +62,14 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
     function initialize(
         address _admin,
         address _refueler,
+        address _receiver,
         address _exitHelper,
         address _childChainManager,
         address _childERC20RelayStake) external initializer {
         _setupContractId("ChildERC20Relay");
         _setupRole(DEFAULT_ADMIN_ROLE, _admin);
         _setupRole(REFUELER_ROLE, _refueler);
+        receiver = _receiver;
         exitHelper = IChildERC20Exit(_exitHelper);
         childChainManager = IChildChainManager(_childChainManager);
         childERC20RelayStake = IChildERC20RelayStake(_childERC20RelayStake);
@@ -144,7 +148,7 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
             IERC20(tokenWithdraw).transfer(relayer, fee);
         }
         if(refuelFee > 0){
-            IERC20(tokenWithdraw).transfer(getRoleMember(REFUELER_ROLE, 0), refuelFee);
+            IERC20(tokenWithdraw).transfer(receiver, refuelFee);
         }
 
         if (!approved[tokenWithdraw]) {
@@ -188,7 +192,7 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
                 relayer.transfer(fee);
             }
             if(refuelFee > 0){
-                payable(getRoleMember(REFUELER_ROLE, 0)).transfer(refuelFee);
+                payable(receiver).transfer(refuelFee);
             }
 
             emit RelayExit(_nonce, relayer, to, address(tokenWithdraw), address(tokenExit), actualExit, fee, withRefuel, refuelFee);
@@ -197,7 +201,7 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
             emit RelayEnd(_nonce, relayer);
 
             if (msg.value > amount) {
-                msg.sender.transfer(msg.value.sub(amount));
+                msgSender().transfer((msg.value).sub(amount));
             }
             return;
         }
@@ -208,7 +212,7 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
             IERC20(tokenWithdraw).transfer(relayer, fee);
         }
         if(refuelFee > 0){
-            IERC20(tokenWithdraw).transfer(getRoleMember(REFUELER_ROLE, 0), refuelFee);
+            IERC20(tokenWithdraw).transfer(receiver, refuelFee);
         }
         if (!approved[tokenWithdraw]) {
             IERC20(tokenWithdraw).approve(address(exitHelper), uint256(-1));
@@ -220,6 +224,18 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
 
         emit RelayEnd(_nonce, relayer);
     }
+
+    function setReceiver(address receiverNew) external only(DEFAULT_ADMIN_ROLE){
+        require(receiverNew != address(0x00), "ChildERC20RelayStake: receiverNew should not be zero address");
+        receiver = receiverNew;
+        emit ReceiverUpdated(receiverNew);
+    }
+
+    function replaceRole(address addr) external only(REFUELER_ROLE) {
+        require(addr != address(0x00), "ChildERC20Relay: role should not be zero address");
+        renounceRole(REFUELER_ROLE, msgSender());
+        _setupRole(REFUELER_ROLE, addr);
+    } 
 
     function _updateHourlyCount(address relayer) internal{
         uint256 currentHour = block.timestamp / 3600;
@@ -258,12 +274,6 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
             return hcCount - temp;
         } 
         return 0;
-    } 
-
-    function replaceRole(address addr) external only(REFUELER_ROLE) {
-        require(addr != address(0x00), "ChildERC20Relay: role should not be zero address");
-        renounceRole(REFUELER_ROLE, msgSender());
-        _setupRole(REFUELER_ROLE, addr);
     } 
 
 }

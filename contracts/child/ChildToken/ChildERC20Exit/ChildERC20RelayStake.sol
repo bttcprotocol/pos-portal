@@ -17,6 +17,7 @@ contract ChildERC20RelayStake is AccessControlMixin, ContextMixin, Initializable
 
     bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE");
     bytes32 public constant COMMUNITY_ROLE = keccak256("COMMUNITY_ROLE");
+    bytes32 public constant CFO_ROLE = keccak256("CFO_ROLE");
     uint256 public constant PRECISION = 100;
 
     IERC20 public usdd_t;
@@ -33,7 +34,6 @@ contract ChildERC20RelayStake is AccessControlMixin, ContextMixin, Initializable
     struct RelayerBasic{
         uint256 stakeAmount;
         uint256 unstakedTime;
-        uint256 timeInterval;
         Status status;
     }
     mapping(address => RelayerBasic) public relayerBasic;
@@ -42,10 +42,7 @@ contract ChildERC20RelayStake is AccessControlMixin, ContextMixin, Initializable
     uint256 public penalSum;
     uint256 public withdrawnPenalSum;
     uint256 public timeInterval;
-    address public receiver;
     uint256 public hardLimit;
-    uint256 public softLimit;
-    uint256 public buffer;
     uint256 public orderCost;
     uint256 public scale;
     
@@ -54,41 +51,47 @@ contract ChildERC20RelayStake is AccessControlMixin, ContextMixin, Initializable
     event ActivateRelayer(address indexed relayer);
     event WithdrawCollateral(address indexed relayer, uint256 amount);
     event HardLimitUpdated(uint256 value);
-    event SoftLimitUpdated(uint256 value);
     event TimeIntervalUpdated(uint256 value);
     event RelayerTimeIntervalUpdated(address relayer,uint256 interval);
-    event OrdersParamsUpdated(uint256 buffer,uint256 scale,uint256 orderCost);
-    event ReceiverUpdated(address receiver);
+    event OrdersParamsUpdated(uint256 scale,uint256 orderCost);
     event Punished(address indexed relayer, uint256 amount, uint256 stakeAmount);
-    event Retrieved(uint256 amount);
+    event Retrieved(address receiver, uint256 amount);
 
     function initialize(
         address _admin,
         address _operator,
         address _community,
+        address _cfo,
         address _usdd_t,
         address _usdd_e,
         address _usdd_b,
-        address _receiver,
         uint256 _timeInterval) external initializer {
         _setupContractId("ChildERC20RelayStake");
         _setupRole(DEFAULT_ADMIN_ROLE, _admin);
         _setupRole(OPERATOR_ROLE, _operator);
         _setupRole(COMMUNITY_ROLE, _community);
+        _setupRole(CFO_ROLE, _cfo);
         usdd_t = IERC20(_usdd_t);
         usdd_b = IERC20(_usdd_b);
         usdd_e = IERC20(_usdd_e);
-        receiver = _receiver;
         timeInterval = _timeInterval;
     }
 
     function stake(IERC20 usdd, uint256 amount) external {
-        address relayer = msgSender();
+        _stake(usdd,amount,msgSender());
+    }
+
+    function stakeTo(IERC20 usdd, uint256 amount, address targetRelayer) external {
+        require(targetRelayer != address(0x00), "ChildERC20RelayStake: targetRelayer should not be zero address");
+        _stake(usdd,amount,targetRelayer);
+    }
+
+    function _stake(IERC20 usdd, uint256 amount, address relayer) internal {
         RelayerBasic storage basic = relayerBasic[relayer];
 
         require(basic.status != Status.unstaked, "ChildERC20RelayStake: incorrect status");
         require(usdd == usdd_t || usdd == usdd_b || usdd == usdd_e,"ChildERC20RelayStake: incorrect usdd address");
-        usdd.safeTransferFrom(relayer, address(this), amount);
+        usdd.safeTransferFrom(msgSender(), address(this), amount);
         if(usdd == usdd_e || usdd == usdd_b){
             IChildTokenForExchange(address(usdd)).swapOut(amount);
         }
@@ -117,11 +120,7 @@ contract ChildERC20RelayStake is AccessControlMixin, ContextMixin, Initializable
         require(basic.status == Status.unstaked || basic.status == Status.staked,"ChildERC20RelayStake: incorrect status");
         
         if(basic.status == Status.unstaked){
-            if(basic.timeInterval > 0){
-                require(block.timestamp.sub(basic.unstakedTime) >= basic.timeInterval,"ChildERC20RelayStake: less than relayer limit timeInterval");
-            }else{
-                require(block.timestamp.sub(basic.unstakedTime) >= timeInterval,"ChildERC20RelayStake: less than limit timeInterval");
-            }
+            require(block.timestamp.sub(basic.unstakedTime) >= timeInterval,"ChildERC20RelayStake: less than limit timeInterval");
         }
 
         delete relayerBasic[relayer];
@@ -142,74 +141,52 @@ contract ChildERC20RelayStake is AccessControlMixin, ContextMixin, Initializable
         emit Punished(relayer,amount,relayerBasic[relayer].stakeAmount);
     }
 
-    function retrieve(uint256 amount) external only(COMMUNITY_ROLE){
+    function retrieve(address receiver, uint256 amount) external only(CFO_ROLE){
         require(amount <= (penalSum.sub(withdrawnPenalSum)), "ChildERC20RelayStake: exceeds penal sum");
         IERC20(usdd_t).safeTransfer(receiver, amount);
         withdrawnPenalSum = withdrawnPenalSum.add(amount);
-        emit Retrieved(amount);
+        emit Retrieved(receiver, amount);
     }
 
     function activateRelayer(address relayer) external only(COMMUNITY_ROLE){
         require(relayer != address(0x00), "ChildERC20RelayStake: relayer should not be zero address");
         require(relayerBasic[relayer].status == Status.staked, "ChildERC20RelayStake: incorrect status");
-        require(relayerBasic[relayer].stakeAmount >= softLimit, "ChildERC20RelayStake: less than limit softLimit");
         
         relayers.add(relayer);
         relayerBasic[relayer].status = Status.activated;
         emit ActivateRelayer(relayer);
     }
 
-    function setTimeInterval(uint256 interval) external only(COMMUNITY_ROLE){
+    function setTimeInterval(uint256 interval) external only(DEFAULT_ADMIN_ROLE){
         require(interval > 0, "ChildERC20RelayStake: need non-zero value");
         timeInterval = interval;
         emit TimeIntervalUpdated(interval);
     }
 
-    function setHardLimit(uint256 hardLimitNew) external only(COMMUNITY_ROLE){
+    function setHardLimit(uint256 hardLimitNew) external only(DEFAULT_ADMIN_ROLE){
         require(hardLimitNew >= 0, "ChildERC20RelayStake: need non-zero value");
         hardLimit = hardLimitNew;
         emit HardLimitUpdated(hardLimitNew);
     }
 
-    function setSoftLimit(uint256 softLimitNew) external only(COMMUNITY_ROLE){
-        require(softLimitNew >= 0, "ChildERC20RelayStake: need non-zero value");
-        softLimit = softLimitNew;
-        emit SoftLimitUpdated(softLimitNew);
-    }
-
-    function setRelayertimeInterval(address relayer,uint256 interval) external only(COMMUNITY_ROLE){
-        require(relayer != address(0x00), "ChildERC20RelayStake: relayer should not be zero address");
-        relayerBasic[relayer].timeInterval = interval;
-        emit RelayerTimeIntervalUpdated(relayer,interval);
-    }
-
-    function setReceiver(address receiverNew) external only(COMMUNITY_ROLE){
-        require(receiverNew != address(0x00), "ChildERC20RelayStake: receiverNew should not be zero address");
-        receiver = receiverNew;
-        emit ReceiverUpdated(receiverNew);
-    }
-
-    function setOrdersParams(uint256 bufferNew, uint256 scaleNew, uint256 orderCostNew) external only(OPERATOR_ROLE){
+    function setOrdersParams(uint256 scaleNew, uint256 orderCostNew) external only(DEFAULT_ADMIN_ROLE){
         require(scaleNew > 0 && orderCostNew > 0, "ChildERC20RelayStake: need non-zero value");
-        buffer = bufferNew;
         scale = scaleNew;
         orderCost = orderCostNew;
-        emit OrdersParamsUpdated(buffer,scale,orderCost);
+        emit OrdersParamsUpdated(scale,orderCost);
     }
 
     function replaceRole(bytes32 role, address addr) external only(role){
         require(addr != address(0x00), "ChildERC20RelayStake: role should not be zero address");
-        require(role == OPERATOR_ROLE || role == COMMUNITY_ROLE, "ChildERC20RelayStake: incorrect role");
+        require(role == OPERATOR_ROLE || role == COMMUNITY_ROLE || role == CFO_ROLE, "ChildERC20RelayStake: incorrect role");
         renounceRole(role, msgSender());
         _setupRole(role, addr);
     }
 
     function getMaxHourlyOrders(address relayer) view external returns(uint256){
         uint256 stakeAmount = relayerBasic[relayer].stakeAmount;
-        uint256 bufferAmount = hardLimit.mul(buffer).div(PRECISION);
-
-        if(stakeAmount >= bufferAmount){
-            return stakeAmount.sub(bufferAmount).mul(PRECISION).div(scale).div(orderCost);
+        if(stakeAmount >= hardLimit){
+            return stakeAmount.sub(hardLimit).mul(PRECISION).div(scale).div(orderCost);
         }
         return 0;  
     }
