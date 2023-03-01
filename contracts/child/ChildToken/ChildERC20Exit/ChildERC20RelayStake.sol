@@ -52,7 +52,6 @@ contract ChildERC20RelayStake is AccessControlMixin, ContextMixin, Initializable
     event WithdrawCollateral(address indexed relayer, uint256 amount);
     event HardLimitUpdated(uint256 value);
     event TimeIntervalUpdated(uint256 value);
-    event RelayerTimeIntervalUpdated(address relayer,uint256 interval);
     event OrdersParamsUpdated(uint256 scale,uint256 orderCost);
     event Punished(address indexed relayer, uint256 amount, uint256 stakeAmount);
     event Retrieved(address receiver, uint256 amount);
