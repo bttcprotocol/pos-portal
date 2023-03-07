@@ -226,7 +226,7 @@ contract ChildERC20Relay is AccessControlMixin, NativeMetaTransaction, ContextMi
     }
 
     function setReceiver(address receiverNew) external only(DEFAULT_ADMIN_ROLE){
-        require(receiverNew != address(0x00), "ChildERC20RelayStake: receiverNew should not be zero address");
+        require(receiverNew != address(0x00), "ChildERC20Relay: receiverNew should not be zero address");
         receiver = receiverNew;
         emit ReceiverUpdated(receiverNew);
     }
