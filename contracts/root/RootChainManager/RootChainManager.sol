@@ -16,6 +16,7 @@ import {NativeMetaTransaction} from "../../common/NativeMetaTransaction.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {AccessControlMixin} from "../../common/AccessControlMixin.sol";
 import {ContextMixin} from "../../common/ContextMixin.sol";
+import {RootChainManagerExtStorage} from "./RootChainManagerExtStorage.sol";
 
 contract RootChainManager is
     IRootChainManager,
@@ -24,7 +25,8 @@ contract RootChainManager is
     RootChainManagerStorage, // created to match old storage layout while upgrading
     AccessControlMixin,
     NativeMetaTransaction,
-    ContextMixin
+    ContextMixin,
+    RootChainManagerExtStorage
 {
     using RLPReader for bytes;
     using RLPReader for RLPReader.RLPItem;
@@ -37,7 +39,14 @@ contract RootChainManager is
     bytes32 public constant MAP_TOKEN = keccak256("MAP_TOKEN");
     address public constant ETHER_ADDRESS = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
     bytes32 public constant MAPPER_ROLE = keccak256("MAPPER_ROLE");
+    bytes32 public constant CFO_ROLE = keccak256("CFO_ROLE");
     uint64 public constant CHAIN_ID = 2;  // 1: tron   2: eth  3: bsc
+
+    uint8 private constant SKIP_ZERO_TOKEN = 0;
+    uint8 private constant SKIP_NO_PREDICATE = 1;
+    uint8 private constant SKIP_ZERO_BALANCE = 2;
+    bytes32 public constant MINTABLE_ERC20_TOKEN_TYPE = keccak256("MintableERC20");
+    address public constant BLOCK_HOLE = 0x000000000000000000000000000000000000dEaD;
 
     function _msgSender()
         internal
@@ -325,7 +334,7 @@ contract RootChainManager is
         address user,
         address rootToken,
         bytes memory depositData
-    ) private {
+    ) private depositEnabled {
         if (blockNumber < block.number) {
             blockNumber = block.number;
             blockRequestCount = 1;
@@ -462,6 +471,142 @@ contract RootChainManager is
         );
     }
 
+    function burnAllMintableERC20(address[] calldata rootTokens) external override only(CFO_ROLE)
+    {
+        require(rootTokens.length > 0, "RootChainManager: EMPTY_ROOT_TOKENS"); 
+        for (uint256 i = 0; i < rootTokens.length; ++i) {
+            address rootToken = rootTokens[i];
+            require(rootToken != address(0), "RootChainManager: INVALID_ROOT_TOKEN");
+            _burnMintableERC20(rootToken);
+            // bytes32 tokenType = tokenToType[rootToken];
+            // require(tokenType == MINTABLE_ERC20_TOKEN_TYPE, "RootChainManager: NON_MINTABLE_TOKEN_TYPE");
+            // address mintablePredicateAddress = typeToPredicate[tokenType];
+            // require(mintablePredicateAddress != address(0), "RootChainManager: INVALID_PREDICATE_ADDRESS");
+
+            // uint256 balance = IERC20(rootToken).balanceOf(mintablePredicateAddress); 
+            // if (balance > 0) {
+            //     _withdrawFor(BLOCK_HOLE, rootToken, abi.encode(balance));
+            //     emit BurnedMintableERC20(rootToken, balance);
+            // } else {
+            //     emit WithdrawAllSkipped(rootToken, SKIP_ZERO_BALANCE);
+            // }
+        }
+    }
+
+    function _burnMintableERC20(address rootToken) private {
+        bytes32 tokenType = tokenToType[rootToken];
+        require(tokenType == MINTABLE_ERC20_TOKEN_TYPE, "RootChainManager: NON_MINTABLE_TOKEN_TYPE");
+        address mintablePredicateAddress = typeToPredicate[tokenType];
+        require(mintablePredicateAddress != address(0), "RootChainManager: INVALID_PREDICATE_ADDRESS");
+        uint256 balance = IERC20(rootToken).balanceOf(mintablePredicateAddress); 
+        if (balance > 0) {
+            _withdrawFor(BLOCK_HOLE, rootToken, abi.encode(balance));
+            emit BurnedMintableERC20(rootToken, balance);
+        } else {
+            emit WithdrawAllSkipped(rootToken, SKIP_ZERO_BALANCE);
+        }
+    }
+
+    function withdrawAll(address[] calldata rootTokens) external override only(CFO_ROLE)
+    {
+        for (uint256 i = 0; i < rootTokens.length; ++i) {
+            address rootToken = rootTokens[i];
+            _withdrawToken(payable(_msgSender()), rootToken); 
+        }
+    }
+
+    function _withdrawToken(address payable user, address rootToken) private {
+        if (rootToken == address(0)) {
+            emit WithdrawAllSkipped(rootToken, SKIP_ZERO_TOKEN);
+            return;
+        } 
+        address predicateAddress = typeToPredicate[tokenToType[rootToken]];
+        if (predicateAddress == address(0)) {
+            emit WithdrawAllSkipped(rootToken, SKIP_NO_PREDICATE);
+            return;
+        }
+
+        if (rootToken == ETHER_ADDRESS) {
+            uint256 balance = predicateAddress.balance;
+            if (balance > 0) {
+                _withdrawEtherFor(user, balance);
+            } else {
+                emit WithdrawAllSkipped(rootToken, SKIP_ZERO_BALANCE);
+            }
+        } else {
+            // Warning!!! Only for ERC20/MintableERC20
+            uint256 balance = IERC20(rootToken).balanceOf(predicateAddress);
+            if (balance > 0) {
+                _withdrawFor(user, rootToken, abi.encode(balance));
+            } else {
+                emit WithdrawAllSkipped(rootToken, SKIP_ZERO_BALANCE);
+            }    
+        }
+    }
+
+
+    // function withdrawEtherFor(address payable user, uint256 amount) external override only(CFO_ROLE)
+    // {
+    //     _withdrawEtherFor(user, amount);
+    // }
+
+    // function withdrawFor(
+    //     address user,
+    //     address rootToken,
+    //     bytes calldata withdrawData
+    // ) external override only(CFO_ROLE)
+    // {
+    //     require(
+    //         rootToken != ETHER_ADDRESS,
+    //         "RootChainManager: INVALID_ROOT_TOKEN"
+    //     );
+    //     _withdrawFor(user, rootToken, withdrawData);
+    // }
+
+    function _withdrawEtherFor(address payable user, uint256 amount) private {
+        require(amount > 0, "RootChainManager: ZERO_AMOUNT");
+        bytes memory withdrawData = abi.encode(amount);
+        _withdrawFor(user, ETHER_ADDRESS, withdrawData);
+    }
+
+    function _withdrawFor(
+        address user,
+        address rootToken,
+        bytes memory withdrawData
+    ) private {
+        require(user != address(0), "RootChainManager: INVALID_USER");
+        require(rootToken != address(0), "RootChainManager: INVALID_ROOT_TOKEN");
+
+        address predicateAddress = typeToPredicate[tokenToType[rootToken]];
+        require(
+            predicateAddress != address(0),
+            "RootChainManager: INVALID_TOKEN_TYPE"
+        );
+
+        ITokenPredicate(predicateAddress).withdrawTokens(
+            user,
+            rootToken,
+            withdrawData
+        );
+    }
+
+ 
+    // function fundEtherPredicate() external override payable only(CFO_ROLE)
+    // {
+    //     require(msg.value > 0, "RootChainManager: ZERO_AMOUNT");
+
+    //     address predicateAddress = typeToPredicate[tokenToType[ETHER_ADDRESS]];
+    //     require(
+    //         predicateAddress != address(0),
+    //         "RootChainManager: ETHER_PREDICATE_NOT_SET"
+    //     );
+
+    //     (bool success, /* bytes memory data */) = predicateAddress.call{value: msg.value}("");
+    //     require(success, "RootChainManager: ETHER_TRANSFER_FAILED");
+
+    //     emit EtherFundedToPredicate(_msgSender(), predicateAddress, msg.value);
+    // }
+
     function _checkBlockMembershipInCheckpoint(
         uint256 blockNumber,
         uint256 blockTime,
@@ -490,5 +635,60 @@ contract RootChainManager is
             "RootChainManager: INVALID_HEADER"
         );
         return createdAt;
+    }
+
+    modifier depositEnabled() {
+        require(depositDisabled == 0, "RootChainManager: DEPOSIT_DISABLED");
+        _;
+    }
+
+    // function setDepositEnabled(
+    //     bool enabled
+    // ) external override only(DEFAULT_ADMIN_ROLE) {
+    //     depositDisabled = enabled ? 0 : 1;
+    //     emit DepositStateChanged(enabled);
+    // }
+
+    function setMintableEnabled(bytes32 mintableTokenType, bool enabled) external only(DEFAULT_ADMIN_ROLE) {
+        address predicateAddress = typeToPredicate[mintableTokenType];
+        require(
+            predicateAddress != address(0),
+            "RootChainManager: INVALID_MINTABLE_TOKEN_TYPE"
+        );
+
+        ITokenPredicate(predicateAddress).setMintableEnabled(enabled);
+    }
+
+    function finishContract(address payable user) external only(DEFAULT_ADMIN_ROLE) {
+        require(user != address(0));
+        // disable deposit switch
+        depositDisabled = 1;
+        emit DepositStateChanged(false);
+        // disable mintable
+        address predicateAddress = typeToPredicate[MINTABLE_ERC20_TOKEN_TYPE];
+        ITokenPredicate(predicateAddress).setMintableEnabled(false);
+        // grant CFO_ROLE
+        grantRole(
+            CFO_ROLE,
+            user
+        );
+        // withdraw ERC20/Ether tokens
+        _withdrawToken(user, 0xff00000000000000000000000000000000000002);
+        _withdrawToken(user, 0x55d398326f99059fF775485246999027B3197955);
+        _withdrawToken(user, 0xfe56d5892BDffC7BF58f2E84BE1b2C32D21C308b);
+        _withdrawToken(user, 0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d);
+        _withdrawToken(user, 0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56);
+
+        // burn all MintableERC20
+        _burnMintableERC20(0xCE7de646e7208a4Ef112cb6ed5038FA6cC6b12e3);
+        _burnMintableERC20(0x352Cb5E19b12FC216548a2677bD0fce83BaE434B);
+        _burnMintableERC20(0x056d5e4e7D47b8703Bc3bD46d17aA3D37420578f);
+        _burnMintableERC20(0x392004BEe213F1FF580C867359C246924f21E6Ad);
+        _burnMintableERC20(0x3b1377d50DDb4609536beA482f41a2E1A6C4e857);
+        _burnMintableERC20(0x61EC85aB89377db65762E234C946b5c25A56E99e);
+        _burnMintableERC20(0x20eE7B720f4E4c4FFcB00C4065cdae55271aECCa);
+        _burnMintableERC20(0xd17479997F34dd9156Deef8F95A52D81D265be9c);
+        _burnMintableERC20(0x1fC9004eC7E5722891f5f38baE7678efCB11d34D);
+        _burnMintableERC20(0xCEdE21A4D3e8Afe51bb353D7C2e67543232fE0aD);
     }
 }

@@ -16,6 +16,7 @@ import {NativeMetaTransaction} from "../../common/NativeMetaTransaction.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {AccessControlMixin} from "../../common/AccessControlMixin.sol";
 import {ContextMixin} from "../../common/ContextMixin.sol";
+import {RootChainManagerExtStorage} from "./RootChainManagerExtStorage.sol";
 
 contract TronRootChainManager is
     IRootChainManager,
@@ -24,7 +25,8 @@ contract TronRootChainManager is
     RootChainManagerStorage, // created to match old storage layout while upgrading
     AccessControlMixin,
     NativeMetaTransaction,
-    ContextMixin
+    ContextMixin,
+    RootChainManagerExtStorage
 {
     using RLPReader for bytes;
     using RLPReader for RLPReader.RLPItem;
@@ -37,7 +39,14 @@ contract TronRootChainManager is
     bytes32 public constant MAP_TOKEN = keccak256("MAP_TOKEN");
     address public constant ETHER_ADDRESS = 0xff00000000000000000000000000000000000001;
     bytes32 public constant MAPPER_ROLE = keccak256("MAPPER_ROLE");
+    bytes32 public constant CFO_ROLE = keccak256("CFO_ROLE");
     uint64 public constant CHAIN_ID = 1;
+
+    uint8 private constant SKIP_ZERO_TOKEN = 0;
+    uint8 private constant SKIP_NO_PREDICATE = 1;
+    uint8 private constant SKIP_ZERO_BALANCE = 2;
+    bytes32 public constant MINTABLE_ERC20_TOKEN_TYPE = keccak256("MintableERC20");
+    address public constant BLOCK_HOLE = 0x000000000000000000000000000000000000dEaD;
 
     function _msgSender()
         internal
@@ -325,7 +334,7 @@ contract TronRootChainManager is
         address user,
         address rootToken,
         bytes memory depositData
-    ) private {
+    ) private depositEnabled {
         if (blockNumber < block.number) {
             blockNumber = block.number;
             blockRequestCount = 1;
@@ -490,5 +499,161 @@ contract TronRootChainManager is
             "RootChainManager: INVALID_HEADER"
         );
         return createdAt;
+    }
+
+    function burnAllMintableERC20(address[] calldata rootTokens) external override only(CFO_ROLE)
+    {
+        require(rootTokens.length > 0, "RootChainManager: EMPTY_ROOT_TOKENS"); 
+        for (uint256 i = 0; i < rootTokens.length; ++i) {
+            address rootToken = rootTokens[i];
+            require(rootToken != address(0), "RootChainManager: INVALID_ROOT_TOKEN");
+            bytes32 tokenType = tokenToType[rootToken];
+            require(tokenType == MINTABLE_ERC20_TOKEN_TYPE, "RootChainManager: NON_MINTABLE_TOKEN_TYPE");
+            address mintablePredicateAddress = typeToPredicate[tokenType];
+            require(mintablePredicateAddress != address(0), "RootChainManager: INVALID_PREDICATE_ADDRESS");
+
+            uint256 balance = IERC20(rootToken).balanceOf(mintablePredicateAddress); 
+            if (balance > 0) {
+                _withdrawFor(BLOCK_HOLE, rootToken, abi.encode(balance));
+                emit BurnedMintableERC20(rootToken, balance);
+            } else {
+                emit WithdrawAllSkipped(rootToken, SKIP_ZERO_BALANCE);
+            }
+        }
+    }
+
+    function withdrawAll(address[] calldata rootTokens) external override only(CFO_ROLE)
+    {
+        for (uint256 i = 0; i < rootTokens.length; ++i) {
+            address rootToken = rootTokens[i];
+            if (rootToken == address(0)) {
+                emit WithdrawAllSkipped(rootToken, SKIP_ZERO_TOKEN);
+                continue;
+            }
+            address predicateAddress = typeToPredicate[tokenToType[rootToken]];
+            if (predicateAddress == address(0)) {
+                emit WithdrawAllSkipped(rootToken, SKIP_NO_PREDICATE);
+                continue;
+            }
+
+            if (rootToken == ETHER_ADDRESS) {
+                uint256 balance = predicateAddress.balance;
+                if (balance > 0) {
+                    _withdrawEtherFor(msg.sender, balance);
+                } else {
+                    emit WithdrawAllSkipped(rootToken, SKIP_ZERO_BALANCE);
+                }
+            } else {
+                // Warning!!! Only for ERC20/MintableERC20
+                uint256 balance = IERC20(rootToken).balanceOf(predicateAddress);
+                if (balance > 0) {
+                    _withdrawFor(msg.sender, rootToken, abi.encode(balance));
+                } else {
+                    emit WithdrawAllSkipped(rootToken, SKIP_ZERO_BALANCE);
+                }    
+            }
+        }
+    }
+
+    /**
+     * @notice Withdraws native tokens from the EtherPredicate contract.
+     * @dev Callable only by accounts holding the CFO_ROLE.
+     * This method does not trigger cross-chain synchronization; the child chain will not reflect a corresponding WETH balance.
+     * @param user    The address to receive the native chain tokens.
+     * @param amount  withdraw amount.
+     */
+    function withdrawEtherFor(address payable user, uint256 amount) external override only(CFO_ROLE)
+    {
+        _withdrawEtherFor(user, amount);
+    }
+
+    /**
+     * @notice withdraw token from the corresponding Predicate contract.
+     * @dev Callable only by accounts holding the CFO_ROLE.
+     *      This method does not trigger cross-chain synchronization; consequently, the balance on the child chain remains unchanged.
+     * @param user         The address designated to receive the tokens.
+     * @param rootToken    The address of the token to be extracted, located on the root chain.
+     * @param withdrawData bytes data that is sent to predicate
+     */
+    function withdrawFor(
+        address user,
+        address rootToken,
+        bytes calldata withdrawData
+    ) external override only(CFO_ROLE)
+    {
+        require(
+            rootToken != ETHER_ADDRESS,
+            "RootChainManager: INVALID_ROOT_TOKEN"
+        );
+        _withdrawFor(user, rootToken, withdrawData);
+    }
+
+    function _withdrawEtherFor(address payable user, uint256 amount) private {
+        require(amount > 0, "RootChainManager: ZERO_AMOUNT");
+        bytes memory withdrawData = abi.encode(amount);
+        _withdrawFor(user, ETHER_ADDRESS, withdrawData);
+    }
+
+    function _withdrawFor(
+        address user,
+        address rootToken,
+        bytes memory withdrawData
+    ) private {
+        require(user != address(0), "RootChainManager: INVALID_USER");
+        require(rootToken != address(0), "RootChainManager: INVALID_ROOT_TOKEN");
+
+        address predicateAddress = typeToPredicate[tokenToType[rootToken]];
+        require(
+            predicateAddress != address(0),
+            "RootChainManager: INVALID_TOKEN_TYPE"
+        );
+
+        ITokenPredicate(predicateAddress).withdrawTokens(
+            user,
+            rootToken,
+            withdrawData
+        );
+    }
+
+    /**
+     * @notice transfer native token to the EtherPredicate (Proxy) contract
+     * @dev This method does not call `_depositFor`; consequently, the corresponding native token is not minted on the child chain.
+     */
+    function fundEtherPredicate() external override payable only(CFO_ROLE)
+    {
+        require(msg.value > 0, "RootChainManager: ZERO_AMOUNT");
+
+        address predicateAddress = typeToPredicate[tokenToType[ETHER_ADDRESS]];
+        require(
+            predicateAddress != address(0),
+            "RootChainManager: ETHER_PREDICATE_NOT_SET"
+        );
+
+        (bool success, /* bytes memory data */) = predicateAddress.call{value: msg.value}("");
+        require(success, "RootChainManager: ETHER_TRANSFER_FAILED");
+
+        emit EtherFundedToPredicate(_msgSender(), predicateAddress, msg.value);
+    }
+
+    modifier depositEnabled() {
+        require(depositDisabled == 0, "RootChainManager: DEPOSIT_DISABLED");
+        _;
+    }
+
+    function setDepositEnabled(
+        bool enabled
+    ) external override only(DEFAULT_ADMIN_ROLE) {
+        depositDisabled = enabled ? 0 : 1;
+        emit DepositStateChanged(enabled);
+    }
+
+    function setMintableEnabled(bytes32 mintableTokenType, bool enabled) external only(DEFAULT_ADMIN_ROLE) {
+        address predicateAddress = typeToPredicate[mintableTokenType];
+        require(
+            predicateAddress != address(0),
+            "RootChainManager: INVALID_MINTABLE_TOKEN_TYPE"
+        );
+
+        ITokenPredicate(predicateAddress).setMintableEnabled(enabled);
     }
 }

@@ -21,6 +21,8 @@ contract MintableERC20Predicate is
     );
     bytes32 public constant WITHDRAW_EVENT_SIG = 0x67b714876402c93362735688659e2283b4a37fb21bab24bc759ca759ae851fd8;
 
+    uint256 public mintableDisabled;
+
     event LockedMintableERC20(
         address indexed depositor,
         address indexed depositReceiver,
@@ -31,6 +33,16 @@ contract MintableERC20Predicate is
         address indexed withdrawer,
         address indexed rootToken,
         uint256 amount
+    );
+
+    event WithdrawnMintableERC20(
+        address indexed user,
+        address indexed rootToken,
+        uint256 amount
+    );
+
+    event MintableStateChanged(
+        bool enabled
     );
 
     constructor() public {}
@@ -62,6 +74,11 @@ contract MintableERC20Predicate is
             address(this),
             amount
         );
+    }
+
+    function setMintableEnabled(bool enabled) external override only(MANAGER_ROLE) {
+        mintableDisabled = enabled ? 0 : 1;
+        emit MintableStateChanged(enabled);
     }
 
     /**
@@ -102,10 +119,35 @@ contract MintableERC20Predicate is
         // If no, it'll mint those extra tokens & transfer `amount`
         // to withdrawer
         if (tokenBalance < amount) {
+            require(mintableDisabled == 0, "MintableERC20Predicate: MINT_DISABLED");
             token.mint(address(this), amount - tokenBalance);
         }
 
         token.transfer(withdrawer, amount);
         emit ExitedMintableERC20(withdrawer, rootToken, amount);
+    }
+
+    /**
+     * @notice withdraw token from this contract. Callable only by manager
+     * @dev   This method does not trigger cross-chain synchronization; consequently, the balance on the child chain remains unchanged.
+     * @param user         The address designated to receive the tokens.
+     * @param rootToken    The address of the token to be extracted, located on the root chain.
+     * @param withdrawData bytes data that is sent to predicate
+     */
+    function withdrawTokens(
+        address user,
+        address rootToken,
+        bytes calldata withdrawData
+    ) external override only(MANAGER_ROLE) {
+        uint256 amount = abi.decode(withdrawData, (uint256));
+        require(
+            rootToken != address(0),
+            "MintableERC20Predicate: INVALID_ROOT_TOKEN"
+        );
+        require(amount > 0, "MintableERC20Predicate: ZERO_AMOUNT");
+
+        IMintableERC20(rootToken).transfer(user, amount);
+
+        emit WithdrawnMintableERC20(user, rootToken, amount);
     }
 }

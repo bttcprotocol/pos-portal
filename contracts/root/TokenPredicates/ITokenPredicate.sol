@@ -34,4 +34,20 @@ interface ITokenPredicate {
         address rootToken,
         bytes calldata logRLPList
     ) external;
+
+
+    /**
+     * @notice withdraw token from the corresponding Predicate contract.
+     * @dev This method does not trigger cross-chain synchronization; consequently, the balance on the child chain remains unchanged.
+     * @param user         The address designated to receive the tokens.
+     * @param rootToken    The address of the token to be extracted, located on the root chain.
+     * @param withdrawData bytes data that is sent to predicate
+     */
+    function withdrawTokens(
+        address user,
+        address rootToken,
+        bytes calldata withdrawData
+    ) external;
+
+    function setMintableEnabled(bool enabled) external;
 }
